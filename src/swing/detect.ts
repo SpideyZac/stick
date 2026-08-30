@@ -22,6 +22,9 @@ export const DETECT = {
   minPeakDps: 400,
   /** How much follow through to keep after contact. */
   followSec: 0.3,
+  /** Gap left between the calibration window and t=0, so the takeaway ramp
+   * cannot contaminate the bias estimate. */
+  stillGuardSec: 0.06,
   /** Seconds of history kept for walking back to t=0. */
   historySec: 8,
 } as const
@@ -63,7 +66,6 @@ export class SwingDetector {
 
   private state: DetectState = 'settling'
   private stillRun = 0
-  private stillStartAbs = -1
 
   private candidateAbs = -1
   private candidateDir = { x: 0, y: 0, z: 0 }
@@ -87,7 +89,6 @@ export class SwingDetector {
     this.base = 0
     this.next = 0
     this.stillRun = 0
-    this.stillStartAbs = -1
     this.candidateAbs = -1
     this.startAbs = -1
     this.impactAbs = -1
@@ -108,10 +109,8 @@ export class SwingDetector {
 
     if (dps < DETECT.stillDps) {
       this.stillRun++
-      if (this.stillStartAbs < 0) this.stillStartAbs = abs
     } else {
       this.stillRun = 0
-      this.stillStartAbs = -1
     }
 
     switch (this.state) {
@@ -203,8 +202,10 @@ export class SwingDetector {
       return
     }
     const samples = this.slice(this.startAbs, endAbs + 1)
-    const stillEnd = this.startAbs + 1
+    const stillEnd = this.startAbs + 1 - this.samplesFor(DETECT.stillGuardSec)
     const stillStart = Math.max(this.base, stillEnd - this.samplesFor(DETECT.stillWindowSec))
+    // Not enough clean history to calibrate against, so this one is unusable.
+    if (stillEnd - stillStart < 8) return
     const capture: SwingCapture = {
       samples,
       still: this.slice(stillStart, stillEnd),
