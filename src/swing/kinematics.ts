@@ -1,7 +1,7 @@
-import type { Quat } from '../math/quat'
-import { rotate } from '../math/quat'
-import { type Vec3, add, cross, scale } from '../math/vec3'
-import { FACE_NORMAL_S, SHAFT_AXIS_S } from './frames'
+import type { Quat } from "../math/quat";
+import { rotate } from "../math/quat";
+import { type Vec3, add, cross, scale } from "../math/vec3";
+import { FACE_NORMAL_S, SHAFT_AXIS_S } from "./frames";
 
 /**
  * Forward kinematics for the clubhead.
@@ -15,14 +15,14 @@ import { FACE_NORMAL_S, SHAFT_AXIS_S } from './frames'
  * otherwise reads about twenty percent low on clubhead speed.
  */
 export const clubheadOffset = (q: Quat, shaftLength: number): Vec3 =>
-  scale(rotate(q, SHAFT_AXIS_S), shaftLength)
+    scale(rotate(q, SHAFT_AXIS_S), shaftLength);
 
 /** Clubhead velocity: the hands carry it along, and it rotates about them. */
 export const clubheadVelocity = (omegaWorld: Vec3, offset: Vec3, gripVelocity: Vec3): Vec3 =>
-  add(gripVelocity, cross(omegaWorld, offset))
+    add(gripVelocity, cross(omegaWorld, offset));
 
 /** Where the face is pointing, in world coordinates. */
-export const faceNormal = (q: Quat): Vec3 => rotate(q, FACE_NORMAL_S)
+export const faceNormal = (q: Quat): Vec3 => rotate(q, FACE_NORMAL_S);
 
 /** Unit vector down the shaft toward the clubhead, in world coordinates. */
-export const shaftDirection = (q: Quat): Vec3 => rotate(q, SHAFT_AXIS_S)
+export const shaftDirection = (q: Quat): Vec3 => rotate(q, SHAFT_AXIS_S);
