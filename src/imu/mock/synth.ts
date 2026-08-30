@@ -1,6 +1,16 @@
 import { type Club, effectiveShaftLength } from '../../data/clubs'
 import { type Quat, conj, fromAngularRate, mul, normalize as qnorm, rotate } from '../../math/quat'
-import { type Vec3, addScaled, cross, dot, len, normalize, reject, scale, v3 } from '../../math/vec3'
+import {
+  type Vec3,
+  addScaled,
+  cross,
+  len,
+  normalize,
+  reject,
+  rotateAbout,
+  scale,
+  v3,
+} from '../../math/vec3'
 import {
   DEG,
   FACE_NORMAL_S,
@@ -50,6 +60,8 @@ export interface SwingParams {
 export interface SwingTruth {
   /** Noise free orientation, sensor to world, one per sample. */
   q: Quat[]
+  /** Noise free angular velocity in world coordinates, one per sample. */
+  omegaW: Vec3[]
   takeawayIndex: number
   topIndex: number
   impactIndex: number
@@ -180,13 +192,14 @@ export function synthesizeSwing(p: SwingParams): SynthResult {
     rateHz,
     truth: {
       q,
+      omegaW,
       takeawayIndex,
       topIndex,
       impactIndex,
       addressQuat: q0,
       backswingSec: p.backswingSec,
       downswingSec: p.downswingSec,
-      ...truthStats(q, omegaW, impactIndex, effectiveShaftLength(p.club)),
+      ...truthStatsAt(q, omegaW, impactIndex, effectiveShaftLength(p.club)),
     },
   }
 }
@@ -195,7 +208,12 @@ export function synthesizeSwing(p: SwingParams): SynthResult {
  * Ground truth angles read straight off the clean orientation. The pipeline has
  * to recover these from noisy, biased, quantized samples.
  */
-function truthStats(q: Quat[], omegaW: Vec3[], impactIndex: number, shaft: number) {
+export function truthStatsAt(
+  q: readonly Quat[],
+  omegaW: readonly Vec3[],
+  impactIndex: number,
+  shaft: number,
+) {
   const i = impactIndex
   const faceW = rotate(q[i], FACE_NORMAL_S)
   const r = scale(rotate(q[i], SHAFT_AXIS_S), shaft)
@@ -272,12 +290,4 @@ function impactSpike(i: number, impactIndex: number): number {
   return 0
 }
 
-/** Rodrigues rotation of v about a unit axis. */
-function rotateAbout(v: Vec3, axis: Vec3, angle: number): Vec3 {
-  const c = Math.cos(angle)
-  const s = Math.sin(angle)
-  const k = normalize(axis)
-  return addScaled(addScaled(scale(v, c), cross(k, v), s), k, (1 - c) * dot(k, v))
-}
 
-export { rotateAbout }

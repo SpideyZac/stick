@@ -63,3 +63,11 @@ export function angleBetween(a: Vec3, b: Vec3): number {
 
 /** Component of a perpendicular to unit vector n. */
 export const reject = (a: Vec3, n: Vec3): Vec3 => addScaled(a, n, -dot(a, n))
+
+/** Rodrigues rotation of v about an axis by angle radians. */
+export function rotateAbout(v: Vec3, axis: Vec3, angle: number): Vec3 {
+  const k = normalize(axis)
+  const c = Math.cos(angle)
+  const s = Math.sin(angle)
+  return addScaled(addScaled(scale(v, c), cross(k, v), s), k, (1 - c) * dot(k, v))
+}
