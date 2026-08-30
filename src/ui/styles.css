@@ -1,12 +1,14 @@
 :root {
   --bg: #0f1411;
   --panel: #18201b;
+  --panel-2: #1f2922;
   --line: #2a352e;
   --text: #e8efe9;
   --dim: #8ea394;
   --accent: #7bd88f;
   --warn: #e5b567;
   --bad: #e57373;
+  --radius: 12px;
   color-scheme: dark;
 }
 
@@ -25,14 +27,365 @@ body,
 body {
   background: var(--bg);
   color: var(--text);
-  font: 15px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   overscroll-behavior: none;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  border: none;
+  background: none;
+  cursor: pointer;
 }
 
 .app {
   height: 100%;
   display: flex;
   flex-direction: column;
-  padding: env(safe-area-inset-top) env(safe-area-inset-right)
-    env(safe-area-inset-bottom) env(safe-area-inset-left);
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom)
+    env(safe-area-inset-left);
+}
+
+.screen {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.screen-head {
+  padding: 14px 16px 10px;
+  border-bottom: 1px solid var(--line);
+  flex: none;
+}
+
+.screen-head.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.screen-head h1 {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 600;
+}
+
+.screen-foot {
+  flex: none;
+  padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 12px 16px 20px;
+}
+
+.muted {
+  color: var(--dim);
+  margin: 6px 0 0;
+  font-size: 13px;
+}
+
+.center {
+  text-align: center;
+}
+
+.warning {
+  background: rgba(229, 181, 103, 0.12);
+  border: 1px solid rgba(229, 181, 103, 0.4);
+  color: var(--warn);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  font-size: 13px;
+  margin: 0 0 12px;
+}
+
+/* Every tap target clears 44px so this works one handed on a range. */
+.primary {
+  width: 100%;
+  min-height: 52px;
+  border-radius: var(--radius);
+  background: var(--accent);
+  color: #0b120d;
+  font-weight: 650;
+  font-size: 16px;
+}
+
+.link {
+  min-height: 44px;
+  color: var(--accent);
+  font-weight: 600;
+  padding: 0;
+}
+
+.chev {
+  color: var(--dim);
+  font-weight: 400;
+  font-size: 13px;
+}
+
+/* Club picker */
+.segmented {
+  display: flex;
+  gap: 6px;
+  background: var(--panel);
+  border-radius: var(--radius);
+  padding: 4px;
+  margin-bottom: 18px;
+}
+
+.segment {
+  flex: 1;
+  min-height: 44px;
+  border-radius: 9px;
+  color: var(--dim);
+  font-weight: 550;
+}
+
+.segment.on {
+  background: var(--panel-2);
+  color: var(--text);
+}
+
+.group-label {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--dim);
+  margin: 16px 0 8px;
+  font-weight: 600;
+}
+
+.club-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+  gap: 8px;
+}
+
+.club {
+  min-height: 60px;
+  border-radius: var(--radius);
+  background: var(--panel);
+  border: 1.5px solid transparent;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+}
+
+.club.on {
+  border-color: var(--accent);
+  background: var(--panel-2);
+}
+
+.club-id {
+  font-weight: 650;
+  font-size: 15px;
+}
+
+.club-loft {
+  font-size: 11px;
+  color: var(--dim);
+}
+
+/* Record screen */
+.record-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 20px 28px;
+}
+
+.status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 17px;
+  font-weight: 550;
+}
+
+.status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--dim);
+}
+
+.status-still .status-dot {
+  background: var(--accent);
+}
+
+.status-capturing .status-dot,
+.status-candidate .status-dot {
+  background: var(--warn);
+  animation: pulse 0.8s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  50% {
+    opacity: 0.3;
+  }
+}
+
+.record {
+  width: 100%;
+  min-height: 62px;
+  border-radius: var(--radius);
+  background: var(--accent);
+  color: #0b120d;
+  font-weight: 700;
+  font-size: 18px;
+}
+
+.record.on {
+  background: var(--bad);
+  color: #150a0a;
+}
+
+.dev-source {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--dim);
+}
+
+.dev-source select {
+  flex: 1;
+  max-width: 62%;
+  min-height: 40px;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 0 8px;
+  font: inherit;
+}
+
+/* Replay */
+.swing-view {
+  margin-bottom: 16px;
+}
+
+.canvas-mount {
+  width: 100%;
+  height: min(46vh, 340px);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--bg);
+  border: 1px solid var(--line);
+}
+
+.playback {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.play {
+  width: 46px;
+  height: 46px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--panel-2);
+  font-size: 16px;
+}
+
+.scrub {
+  flex: 1;
+  accent-color: var(--accent);
+  height: 44px;
+}
+
+.legend {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--dim);
+  margin: 4px 0 0;
+}
+
+.key {
+  width: 14px;
+  height: 2px;
+  border-radius: 1px;
+  margin-left: 8px;
+}
+
+.key:first-child {
+  margin-left: 0;
+}
+
+.key-target {
+  background: var(--accent);
+}
+
+.key-trail {
+  background: var(--accent);
+  opacity: 0.6;
+}
+
+.key-face {
+  background: var(--warn);
+}
+
+/* Stats */
+.stat-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.stat {
+  background: var(--panel);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.stat-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--dim);
+}
+
+.stat-value {
+  font-size: 17px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.stat-note {
+  font-size: 11px;
+  color: var(--dim);
+}
+
+.headline .stat {
+  background: var(--panel-2);
+}
+
+.headline .stat-value {
+  font-size: 21px;
 }
