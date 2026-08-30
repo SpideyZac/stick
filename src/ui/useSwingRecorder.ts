@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { getClub } from "../data/clubs";
+import type { Club } from "../data/clubs";
 import { MockImuSource } from "../imu/mock/source";
 import type { SwingId } from "../imu/mock/swings";
 import type { ImuSource } from "../imu/types";
@@ -24,7 +24,12 @@ export interface Recorder {
  * The source is only ever touched through the ImuSource interface, so this is
  * the single place a real BLE connection has to be introduced later.
  */
-export function useSwingRecorder(clubId: string, hand: Handedness, mockSwing: SwingId): Recorder {
+export function useSwingRecorder(
+    clubId: string,
+    hand: Handedness,
+    mockSwing: SwingId,
+    resolveClub: (clubId: string) => Club,
+): Recorder {
     const [status, setStatus] = useState<RecorderStatus>("idle");
     const [analysis, setAnalysis] = useState<SwingAnalysis | null>(null);
     const [error, setError] = useState<string | null>(null);
@@ -34,8 +39,10 @@ export function useSwingRecorder(clubId: string, hand: Handedness, mockSwing: Sw
     // Read inside the sample callback, so they must not go stale between renders.
     const clubRef = useRef(clubId);
     const handRef = useRef(hand);
+    const resolveClubRef = useRef(resolveClub);
     clubRef.current = clubId;
     handRef.current = hand;
+    resolveClubRef.current = resolveClub;
 
     const stop = useCallback(() => {
         unsubscribeRef.current?.();
@@ -53,7 +60,13 @@ export function useSwingRecorder(clubId: string, hand: Handedness, mockSwing: Sw
         const detector = new SwingDetector(
             (capture) => {
                 try {
-                    setAnalysis(analyzeSwing(capture, getClub(clubRef.current), handRef.current));
+                    setAnalysis(
+                        analyzeSwing(
+                            capture,
+                            resolveClubRef.current(clubRef.current),
+                            handRef.current,
+                        ),
+                    );
                 } catch (e) {
                     setError(e instanceof Error ? e.message : "Could not read that swing");
                 }

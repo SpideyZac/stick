@@ -1,6 +1,15 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ProfileProvider } from "../profile/ProfileContext";
 import { App } from "./App";
+
+function renderApp() {
+    return render(
+        <ProfileProvider>
+            <App />
+        </ProfileProvider>,
+    );
+}
 
 // jsdom has no WebGL, so the replay is stubbed out. Everything the scene does is
 // imperative three work with no logic of its own worth asserting here.
@@ -10,7 +19,10 @@ vi.mock("./SwingView", () => ({
     ),
 }));
 
-beforeEach(() => vi.useFakeTimers());
+beforeEach(() => {
+    localStorage.clear();
+    vi.useFakeTimers();
+});
 afterEach(() => {
     cleanup();
     vi.useRealTimers();
@@ -28,7 +40,7 @@ async function playThrough(ms = 10_000) {
 
 /** Pick a club, record, wait for the swing to land. */
 async function recordASwing(clubLabel = "7I") {
-    render(<App />);
+    renderApp();
     click(new RegExp(`^${clubLabel}`, "i"));
     click(/^Use /);
     click("Record");
@@ -37,27 +49,27 @@ async function recordASwing(clubLabel = "7I") {
 
 describe("app flow", () => {
     it("starts on the club picker with a default club selected", () => {
-        render(<App />);
+        renderApp();
         expect(screen.getByText("Pick your club")).toBeTruthy();
         expect(screen.getByRole("button", { name: /Use 7 Iron/ })).toBeTruthy();
     });
 
     it("offers every club except the driver", () => {
-        render(<App />);
+        renderApp();
         expect(screen.getByRole("button", { name: /^LW/ })).toBeTruthy();
         expect(screen.getByRole("button", { name: /^3W/ })).toBeTruthy();
         expect(screen.queryByRole("button", { name: /^DR/ })).toBeNull();
     });
 
     it("moves to the record screen and reports what it is waiting for", () => {
-        render(<App />);
+        renderApp();
         click(/^Use /);
         expect(screen.getByText(/Ready when you are/)).toBeTruthy();
         expect(screen.getByRole("button", { name: "Record" })).toBeTruthy();
     });
 
     it("lets the golfer switch handedness", () => {
-        render(<App />);
+        renderApp();
         click("Left handed");
         expect(screen.getByRole("button", { name: "Left handed" }).className).toContain("on");
     });
@@ -92,7 +104,7 @@ describe("app flow", () => {
     });
 
     it("reports a slice as a slice", async () => {
-        render(<App />);
+        renderApp();
         click(/^Use /);
         fireEvent.change(screen.getByRole("combobox"), { target: { value: "slice" } });
         click("Record");
@@ -104,7 +116,7 @@ describe("app flow", () => {
     });
 
     it("survives a waggle and still reports a swing", async () => {
-        render(<App />);
+        renderApp();
         click(/^Use /);
         fireEvent.change(screen.getByRole("combobox"), { target: { value: "waggle" } });
         click("Record");

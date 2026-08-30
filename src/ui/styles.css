@@ -72,6 +72,19 @@ button {
     justify-content: space-between;
 }
 
+.header-links {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 2px;
+    flex: none;
+}
+
+.header-links .link {
+    min-height: 0;
+    font-size: 13px;
+}
+
 .screen-head h1 {
     margin: 0;
     font-size: 20px;
@@ -205,6 +218,69 @@ button {
 .club-loft {
     font-size: 11px;
     color: var(--dim);
+}
+
+/* Calibrate */
+.calibrate-card {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 10px 12px;
+    margin-bottom: 8px;
+}
+
+.calibrate-card-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+}
+
+.calibrate-fields {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+    gap: 8px;
+}
+
+.calibrate-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 11px;
+    color: var(--dim);
+}
+
+.calibrate-field input {
+    min-height: 40px;
+    background: var(--panel);
+    color: var(--text);
+    border: 1px solid var(--line);
+    border-radius: 7px;
+    padding: 0 8px;
+    font: inherit;
+    font-variant-numeric: tabular-nums;
+    width: 100%;
+}
+
+/* History */
+.history-club-select {
+    width: 100%;
+    min-height: 44px;
+    background: var(--panel);
+    color: var(--text);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 0 10px;
+    font: inherit;
+    margin-bottom: 12px;
+}
+
+.chart-box {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 8px 4px 4px;
+    margin-bottom: 8px;
 }
 
 /* Record screen */

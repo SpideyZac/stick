@@ -14,18 +14,38 @@ interface Props {
     onClub: (id: string) => void;
     onHand: (hand: Handedness) => void;
     onDone: () => void;
+    onCalibrate: () => void;
+    onHistory: () => void;
 }
 
-export function ClubPicker({ clubId, hand, onClub, onHand, onDone }: Props) {
+export function ClubPicker({
+    clubId,
+    hand,
+    onClub,
+    onHand,
+    onDone,
+    onCalibrate,
+    onHistory,
+}: Props) {
     const selected = CLUBS.find((c) => c.id === clubId);
 
     return (
         <div className="screen">
-            <header className="screen-head">
-                <h1>Pick your club</h1>
-                <p className="muted">
-                    Driver isn't supported yet, since it's teed up rather than grounded.
-                </p>
+            <header className="screen-head row">
+                <div>
+                    <h1>Pick your club</h1>
+                    <p className="muted">
+                        Driver isn't supported yet, since it's teed up rather than grounded.
+                    </p>
+                </div>
+                <div className="header-links">
+                    <button type="button" className="link" onClick={onHistory}>
+                        Stats
+                    </button>
+                    <button type="button" className="link" onClick={onCalibrate}>
+                        Calibrate
+                    </button>
+                </div>
             </header>
 
             <div className="scroll">
