@@ -170,6 +170,21 @@ describe("ball flight", () => {
     });
 });
 
+describe("strike location", () => {
+    it("reads a clean swing as a center strike", () => {
+        const a = analyze("good");
+        expect(a.strike.zone).toBe("center");
+        expect(a.strike.contactMade).toBe(true);
+    });
+
+    it("hands back a fixed ball position under the address clubhead", () => {
+        const a = analyze("good");
+        expect(a.strike.ballPosition.x).toBeCloseTo(a.clubheadPath[0].x, 6);
+        expect(a.strike.ballPosition.z).toBeCloseTo(a.clubheadPath[0].z, 6);
+        expect(a.strike.ballPosition.y).toBeGreaterThan(a.clubheadPath[0].y);
+    });
+});
+
 describe("analysis output for the replay", () => {
     it("hands back a clubhead path and matching times", () => {
         const a = analyze("good");

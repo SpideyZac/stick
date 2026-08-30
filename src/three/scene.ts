@@ -1,5 +1,6 @@
 import * as THREE from "three";
-import { FACE_NORMAL_S } from "../swing/frames";
+import { BALL_RADIUS_M } from "../data/ball";
+import { FACE_NORMAL_S, WORLD_UP } from "../swing/frames";
 import type { SwingAnalysis } from "../swing/pipeline";
 
 const COLORS = {
@@ -14,7 +15,11 @@ const COLORS = {
     trail: 0x8fbf8a,
     face: 0xd99a4e,
     ball: 0xffffff,
+    strike: 0xe8543f,
 };
+
+/** Face plate depth. Real clubheads vary, this is just thick enough to read as a plate. */
+const FACE_DEPTH = 0.014;
 
 const TRAIL_SECONDS = 0.55;
 
@@ -42,6 +47,7 @@ export class SwingScene {
     private trail: THREE.Line;
     private trailPositions: Float32Array = new Float32Array(0);
     private ball: THREE.Mesh;
+    private strikeMarker: THREE.Mesh;
     private grid: THREE.GridHelper;
     private targetLine: THREE.Line;
 
@@ -120,8 +126,11 @@ export class SwingScene {
         );
         this.root.add(this.hubMesh);
 
+        // Unit box, rescaled to the club's real face width/height/depth per swing and
+        // oriented every frame to the clubhead's own face-local axes, the same ones
+        // src/swing/strike.ts uses for its strike-location math.
         this.head = new THREE.Mesh(
-            new THREE.SphereGeometry(0.035, 12, 8),
+            new THREE.BoxGeometry(1, 1, 1),
             new THREE.MeshLambertMaterial({ color: COLORS.head }),
         );
         this.root.add(this.head);
@@ -139,10 +148,20 @@ export class SwingScene {
         this.root.add(this.trail);
 
         this.ball = new THREE.Mesh(
-            new THREE.SphereGeometry(0.021, 10, 8),
+            new THREE.SphereGeometry(BALL_RADIUS_M, 10, 8),
             new THREE.MeshLambertMaterial({ color: COLORS.ball }),
         );
         this.root.add(this.ball);
+
+        // Marks where the clubhead actually came closest to the ball. Hidden until
+        // the replay reaches that instant, and only stands out in a mis-hit color
+        // when the strike missed the center of the face.
+        this.strikeMarker = new THREE.Mesh(
+            new THREE.SphereGeometry(0.009, 10, 8),
+            new THREE.MeshBasicMaterial({ color: COLORS.strike }),
+        );
+        this.strikeMarker.visible = false;
+        this.root.add(this.strikeMarker);
 
         // These three get rewritten every frame. Three caches a bounding sphere the
         // first time it culls and never recomputes it, so a line that starts life
@@ -173,20 +192,27 @@ export class SwingScene {
         geometry.setAttribute("position", new THREE.BufferAttribute(this.trailPositions, 3));
         geometry.setDrawRange(0, 0);
 
-        // The grip is the origin, so the ground sits a shaft length below it, and the
-        // ball sits under the clubhead as it was at address.
+        // The grip is the origin, so the ground sits a shaft length below it. Ball
+        // position is the same fixed point src/swing/strike.ts computes the strike
+        // location against, wherever the clubhead rested at address.
         const groundY = analysis.clubheadPath[0].y;
         this.grid.position.y = groundY;
-        this.ball.position.set(
-            analysis.clubheadPath[0].x,
-            groundY + 0.021,
-            analysis.clubheadPath[0].z,
-        );
+        const ball = analysis.strike.ballPosition;
+        this.ball.position.set(ball.x, ball.y, ball.z);
 
         setLine(this.targetLine, [
             new THREE.Vector3(this.ball.position.x - 1.2, groundY + 0.002, this.ball.position.z),
             new THREE.Vector3(this.ball.position.x + 2.4, groundY + 0.002, this.ball.position.z),
         ]);
+
+        this.head.scale.set(analysis.club.faceWidth, analysis.club.faceHeight, FACE_DEPTH);
+        (this.head.material as THREE.MeshLambertMaterial).color.set(
+            analysis.strike.zone === "center" ? COLORS.head : COLORS.strike,
+        );
+
+        const contact = analysis.strike.contactPoint;
+        this.strikeMarker.position.set(contact.x, contact.y, contact.z);
+        this.strikeMarker.visible = false;
 
         this.shaft.scale.y = analysis.shaftLength;
         this.hubMesh.position.set(analysis.hub.x, analysis.hub.y, analysis.hub.z);
@@ -218,10 +244,31 @@ export class SwingScene {
 
         const q = a.orientation[this.frame];
         const quat = new THREE.Quaternion(q.x, q.y, q.z, q.w);
-        const face = new THREE.Vector3(FACE_NORMAL_S.x, FACE_NORMAL_S.y, FACE_NORMAL_S.z)
-            .applyQuaternion(quat)
-            .multiplyScalar(0.22);
+        const faceNormal = new THREE.Vector3(
+            FACE_NORMAL_S.x,
+            FACE_NORMAL_S.y,
+            FACE_NORMAL_S.z,
+        ).applyQuaternion(quat);
+        const face = faceNormal.clone().multiplyScalar(0.22);
         setLine(this.faceLine, [headPos, headPos.clone().add(face)]);
+
+        // Same face-local axes src/swing/strike.ts decomposes offsets into: "up" is
+        // whatever is perpendicular to world up and the face normal, "across" is
+        // perpendicular to both. Orienting the box mesh to them every frame keeps the
+        // rendered face plate honest to the physics, not just a fixed prop on the shaft.
+        const worldUp = new THREE.Vector3(WORLD_UP.x, WORLD_UP.y, WORLD_UP.z);
+        const vertical = worldUp
+            .clone()
+            .sub(faceNormal.clone().multiplyScalar(worldUp.dot(faceNormal)))
+            .normalize();
+        const lateral = new THREE.Vector3().crossVectors(vertical, faceNormal);
+        this.head.quaternion.setFromRotationMatrix(
+            new THREE.Matrix4().makeBasis(lateral, vertical, faceNormal),
+        );
+
+        if (a.strike.contactMade) {
+            this.strikeMarker.visible = a.times[this.frame] >= a.strike.contactSec;
+        }
 
         this.updateTrail();
         this.needsRender = true;

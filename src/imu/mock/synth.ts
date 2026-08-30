@@ -16,9 +16,11 @@ import {
 import {
     DEG,
     FACE_NORMAL_S,
+    FORWARD_AXIS_S,
     GRAVITY,
     type Handedness,
     SHAFT_AXIS_S,
+    WORLD_UP,
     fromSensorAxes,
     horizontalAngle,
 } from "../../swing/frames";
@@ -53,6 +55,20 @@ export interface SwingParams {
     /** Total shaft rotation in the backswing, about the plane normal. */
     sweepDeg: number;
     waggles: Waggle[];
+    /**
+     * Vertical lift of the swing hub through the downswing, meters. Positive
+     * raises the arc (losing posture, standing up out of the shot), which is
+     * the classic cause of a topped or thin strike. Ramps from zero at the top
+     * of the backswing to full value at impact, so it never touches the still
+     * or address window the calibration reads.
+     */
+    verticalDriftM: number;
+    /**
+     * Lateral drift of the swing hub through the downswing, meters. Early
+     * extension or sway toward or away from the ball, the classic cause of a
+     * heel or toe strike. Same ramp as verticalDriftM.
+     */
+    lateralDriftM: number;
     gyroBiasDps: Vec3;
     gyroNoiseDps: number;
     accelNoiseG: number;
@@ -142,6 +158,26 @@ export function synthesizeSwing(p: SwingParams): SynthResult {
     const handRadius = len(HUB);
     const handStart = normalize(scale(HUB, -1));
 
+    // Where the hub sits at time t. Ramped in from zero at the top of the
+    // backswing to full drift at impact, so address-time geometry (t=0, ramp=0)
+    // and the still-window calibration are completely unaffected.
+    //
+    // Lateral drift moves along the address-time forward axis rather than a
+    // fixed world axis, since that is the axis src/swing/strike.ts's face-local
+    // decomposition treats as heel-toe. A plain world axis mixes into the
+    // vertical (top/thin) axis instead once the face has rolled through
+    // impact, which reads as a topped strike no matter which way the sway went.
+    const lateralAxis = rotate(q0, FORWARD_AXIS_S);
+    const driftSpan = Math.max(1e-6, tImpact - tTop);
+    const hubAt = (t: number): Vec3 => {
+        const ramp = smoothstep(clamp01((t - tTop) / driftSpan));
+        return addScaled(
+            addScaled(HUB, WORLD_UP, p.verticalDriftM * ramp),
+            lateralAxis,
+            p.lateralDriftM * ramp,
+        );
+    };
+
     let cur = q0;
     let phi = 0;
     for (let i = 0; i < n; i++) {
@@ -159,7 +195,7 @@ export function synthesizeSwing(p: SwingParams): SynthResult {
         omegaW[i] = w;
         // The hands trail the shaft, so the grip arc only gets a fraction of the sweep.
         grip[i] = addScaled(
-            HUB,
+            hubAt(t),
             rotateAbout(handStart, planeNormal, phi * HAND_FRACTION),
             handRadius,
         );
@@ -291,6 +327,11 @@ function waggleRate(t: number, p: SwingParams): number {
     }
     return sum;
 }
+
+const clamp01 = (x: number): number => Math.min(1, Math.max(0, x));
+
+/** Eases in and out, so a drift ramps on smoothly instead of kinking at the top. */
+const smoothstep = (x: number): number => x * x * (3 - 2 * x);
 
 // Small wandering motion right after the record tap, before the golfer settles.
 const prerollRate = (t: number, dur: number): number => 8 * DEG * Math.sin(t * 7.3) * (1 - t / dur);

@@ -1,6 +1,17 @@
 import { shapeLabel } from "../flight/ballflight";
+import type { StrikeZone } from "../swing/strike";
 import type { SwingAnalysis } from "../swing/pipeline";
 import { DEGREE, fixed, mph, sided, tempo, yards } from "./units";
+
+const zoneLabel: Record<StrikeZone, string> = {
+    center: "Center",
+    toe: "Toe",
+    heel: "Heel",
+    thin: "Thin",
+    top: "Top",
+    fat: "Fat",
+    whiff: "Whiff",
+};
 
 function Stat({ label, value, note }: { label: string; value: string; note?: string }) {
     return (
@@ -13,7 +24,7 @@ function Stat({ label, value, note }: { label: string; value: string; note?: str
 }
 
 export function StatsPanel({ analysis }: { analysis: SwingAnalysis }) {
-    const { stats, flight, calibration } = analysis;
+    const { stats, strike, flight, calibration } = analysis;
 
     return (
         <div className="stats">
@@ -26,6 +37,18 @@ export function StatsPanel({ analysis }: { analysis: SwingAnalysis }) {
                     label="Carry"
                     value={`${fixed(yards(flight.carryM), 0)} yd`}
                     note={shapeLabel[flight.shape]}
+                />
+            </div>
+
+            <div className="stat-row">
+                <Stat
+                    label="Strike"
+                    value={zoneLabel[strike.zone]}
+                    note={
+                        strike.contactMade
+                            ? `${fixed(strike.offCenterM * 1000, 0)} mm off center`
+                            : "no contact"
+                    }
                 />
             </div>
 

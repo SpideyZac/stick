@@ -1,7 +1,21 @@
 import { describe, expect, it, vi } from "vitest";
+import { getClub } from "../../data/clubs";
+import { SwingDetector, type SwingCapture } from "../../swing/detect";
+import { analyzeSwing } from "../../swing/pipeline";
 import { GYRO_RANGE_DPS, ACCEL_RANGE_G, type ImuSample } from "../types";
 import { MockImuSource } from "./source";
-import { SWING_IDS, getSwing } from "./swings";
+import { SWING_IDS, type SwingId, getSwing } from "./swings";
+
+const SEVEN_IRON = getClub("7i");
+
+function capture(id: SwingId): SwingCapture {
+    const { samples } = getSwing(id);
+    let out: SwingCapture | null = null;
+    const d = new SwingDetector((c) => (out = c));
+    for (let i = 0; i < samples.length; i += 8) d.push(samples.slice(i, i + 8));
+    if (!out) throw new Error(`no capture for ${id}`);
+    return out;
+}
 
 const DEG = Math.PI / 180;
 const gyroMag = (s: ImuSample) => Math.hypot(s.gx, s.gy, s.gz) / DEG;
@@ -82,6 +96,55 @@ describe("synthesized swings", () => {
         const a = getSwing("slice").samples;
         const b = getSwing("slice").samples;
         expect(a[500]).toEqual(b[500]);
+    });
+});
+
+describe("mis-hit presets", () => {
+    // These presets displace the swing arc through real geometry (see
+    // verticalDriftM/lateralDriftM in synth.ts), not by hand-setting a strike
+    // location. This proves the real pipeline independently discovers the
+    // mis-hit from the noisy IMU stream, the same way it would from a real
+    // sensor.
+    //
+    // fat lands as "center" and heel lands as "top", not their own names. Both
+    // are known, documented limits rather than bugs in this test: there is no
+    // turf sensing anywhere in this system, so fat/chunked contact is not
+    // reliably distinguishable from clean contact by this method (see the
+    // highLowM comment in strike.ts); and this particular swing's geometry
+    // couples a standing-up-and-away miss into more vertical offset than
+    // lateral, which the classifier (rightly) reads as the more severe fault.
+    const expectedZone: Record<SwingId, string> = {
+        good: "center",
+        flush: "center",
+        slice: "center",
+        hook: "center",
+        waggle: "center",
+        topped: "top",
+        thin: "thin",
+        fat: "center",
+        toe: "toe",
+        heel: "top",
+    };
+
+    for (const id of SWING_IDS) {
+        it(`reads ${id} as ${expectedZone[id]}`, () => {
+            const a = analyzeSwing(capture(id), SEVEN_IRON, "right");
+            expect(a.strike.zone).toBe(expectedZone[id]);
+        });
+    }
+
+    it("carries noticeably shorter when badly mis-hit than a clean swing", () => {
+        const good = analyzeSwing(capture("good"), SEVEN_IRON, "right");
+        const topped = analyzeSwing(capture("topped"), SEVEN_IRON, "right");
+        expect(topped.flight.carryM).toBeLessThan(good.flight.carryM * 0.6);
+    });
+
+    it("stays inside the fairway line for the clean presets", () => {
+        for (const id of ["good", "flush", "slice", "hook", "waggle"] as const) {
+            const a = analyzeSwing(capture(id), SEVEN_IRON, "right");
+            expect(a.strike.zone, id).toBe("center");
+            expect(a.strike.offCenterM, id).toBe(0);
+        }
     });
 });
 

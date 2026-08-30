@@ -1,14 +1,12 @@
+import { BALL } from "../data/ball";
 import type { Club } from "../data/clubs";
 import { type Vec3, addScaled, cross, len, normalize, rotateAbout, v3 } from "../math/vec3";
-import { DEG, GRAVITY, WORLD_UP } from "../swing/frames";
+import { DEG, GRAVITY, type Handedness, WORLD_UP } from "../swing/frames";
+import type { StrikeLocation } from "../swing/strike";
 import type { SwingStats } from "../swing/stats";
 
-// A golf ball, and the air it flies through. Fixed on purpose, none of this is
-// worth exposing as a setting.
-const BALL = {
-    massKg: 0.04593,
-    diameterM: 0.04267,
-} as const;
+// The air a golf ball flies through. Fixed on purpose, none of this is worth
+// exposing as a setting.
 const AIR_DENSITY = 1.225;
 const AREA = (Math.PI * BALL.diameterM * BALL.diameterM) / 4;
 const FORCE_K = (0.5 * AIR_DENSITY * AREA) / BALL.massKg;
@@ -26,14 +24,39 @@ const DRAG_PER_SPIN_RATIO = 0.25;
 const FACE_WEIGHT = 0.85;
 /** Degrees of spin axis tilt per degree of face to path. */
 const SPIN_AXIS_PER_DEGREE = 3.5;
-const MAX_SPIN_AXIS = 40;
+// Widened from the plain face-to-path 40 degree cap to leave room for gear
+// effect (below) stacking on top of the curve a mis-hit already has.
+const MAX_SPIN_AXIS = 60;
 /** Rough backspin from dynamic loft. Enough to size the lift, no more. */
 const SPIN_PER_LOFT_RPM = 220;
+/** Floor so a near-topped ball still has some backspin rather than none. */
+const MIN_BACKSPIN_RPM = 150;
+
+/**
+ * Off-center strikes lose ball speed faster than a linear falloff, the way a
+ * real moment-of-inertia loss does: small misses barely cost anything, big
+ * ones fall off a cliff. These are the quadratic (and, near the leading edge,
+ * cubic) coefficients for that falloff, tuned to feel right rather than
+ * measured off real launch monitor data.
+ */
+const LATERAL_SMASH_LOSS = 0.28;
+const VERTICAL_SMASH_LOSS_HIGH = 0.35;
+const VERTICAL_SMASH_LOSS_LOW = 0.5;
+/** Where "high on the face, toward the top edge" turns into a real cliff. */
+const LEADING_EDGE_FRAC = 0.6;
+const LEADING_EDGE_KICKER = 6;
+
+/** How much loft a strike keeps, per unit of high/low face offset. */
+const LOFT_LOSS_HIGH = 1.15;
+const LOFT_LOSS_LOW = 0.25;
+
+/** Degrees of spin axis tilt a fully-off-center toe or heel strike adds. */
+const GEAR_EFFECT_DEG = 12;
 
 const STEP = 0.001;
 const MAX_FLIGHT_SEC = 15;
 
-export type ShotShape = "straight" | "draw" | "fade" | "hook" | "slice";
+export type ShotShape = "straight" | "draw" | "fade" | "hook" | "slice" | "whiff";
 
 export interface BallFlight {
     dynamicLoftDeg: number;
@@ -59,14 +82,55 @@ export interface BallFlight {
  * We have no spin data, so face to path stands in for the spin axis. That is the
  * right proxy: face to path is what actually curves a golf ball, and it is the
  * one thing a grip mounted gyro can see clearly.
+ *
+ * Strike location modulates all of this on top of the clean-contact numbers
+ * above: off-center contact loses ball speed and loft, contact near the top of
+ * the face or the leading edge collapses both toward nothing (a topped shot),
+ * and toe or heel contact adds gear-effect sidespin opposite the miss.
  */
-export function estimateFlight(stats: SwingStats, club: Club): BallFlight {
-    const dynamicLoftDeg = Math.max(1, club.loft + stats.attackAngleDeg);
-    const launchAngleDeg = dynamicLoftDeg * club.launchFactor;
-    const ballSpeedMps = stats.clubheadSpeedMps * club.smash;
-    const backspinRpm = SPIN_PER_LOFT_RPM * dynamicLoftDeg;
+export function estimateFlight(
+    stats: SwingStats,
+    club: Club,
+    strike: StrikeLocation,
+    hand: Handedness,
+): BallFlight {
+    if (strike.zone === "whiff") return whiffedFlight();
+
+    // + is toward the top of the face / leading edge (thin, then topped).
+    // - is the heuristic fat/chunk direction, see StrikeLocation.highLowM.
+    const ny = strike.faceHitFracY;
+    // + is toe, - is heel.
+    const nx = strike.faceHitFracX;
+
+    const lateralLoss = LATERAL_SMASH_LOSS * nx * nx;
+    const verticalLoss =
+        ny >= 0
+            ? VERTICAL_SMASH_LOSS_HIGH * ny * ny +
+              LEADING_EDGE_KICKER * Math.max(0, ny - LEADING_EDGE_FRAC) ** 3
+            : VERTICAL_SMASH_LOSS_LOW * ny * ny;
+    const smashRetention = clamp(1 - lateralLoss - verticalLoss, 0.05, 1);
+
+    const loftRetention =
+        ny >= 0
+            ? clamp(1 - LOFT_LOSS_HIGH * ny, 0.05, 1)
+            : clamp(1 - LOFT_LOSS_LOW * Math.abs(ny), 0.4, 1);
+
+    const dynamicLoftDeg = Math.max(0.5, (club.loft + stats.attackAngleDeg) * loftRetention);
+    let launchAngleDeg = dynamicLoftDeg * club.launchFactor;
+    if (ny > 0.85) {
+        // A true top barely gets airborne, no matter what the loft math says.
+        launchAngleDeg = Math.min(launchAngleDeg, 2 + (1 - ny) * 10);
+    }
+
+    const ballSpeedMps = stats.clubheadSpeedMps * club.smash * smashRetention;
+    const backspinRpm = Math.max(MIN_BACKSPIN_RPM, SPIN_PER_LOFT_RPM * dynamicLoftDeg);
+
+    // Toe strikes impart draw-biased gear spin, heel strikes fade-biased, opposite
+    // the geometric miss, tapered by how solidly the ball was actually struck.
+    const gearSign = hand === "right" ? -1 : 1;
+    const gearSpinAxisDeg = gearSign * nx * GEAR_EFFECT_DEG * smashRetention;
     const spinAxisDeg = clamp(
-        stats.faceToPathDeg * SPIN_AXIS_PER_DEGREE,
+        stats.faceToPathDeg * SPIN_AXIS_PER_DEGREE + gearSpinAxisDeg,
         -MAX_SPIN_AXIS,
         MAX_SPIN_AXIS,
     );
@@ -152,6 +216,23 @@ function integrate(v0: Vec3, spinAxisRad: number, spinSurfaceMps: number) {
     return { path, carryM: p.x, offlineM: p.z, apexM };
 }
 
+/** No contact worth calling a shot: the club missed the ball by more than a face and ball width. */
+function whiffedFlight(): BallFlight {
+    return {
+        dynamicLoftDeg: 0,
+        launchAngleDeg: 0,
+        startDirectionDeg: 0,
+        ballSpeedMps: 0,
+        backspinRpm: 0,
+        spinAxisDeg: 0,
+        carryM: 0,
+        offlineM: 0,
+        apexM: 0,
+        shape: "whiff",
+        path: [v3(0, 0, 0)],
+    };
+}
+
 function classify(offlineM: number): ShotShape {
     const yards = offlineM * 1.09361;
     const magnitude = Math.abs(yards);
@@ -168,6 +249,7 @@ export const shapeLabel: Record<ShotShape, string> = {
     fade: "Fade",
     hook: "Hook",
     slice: "Slice",
+    whiff: "Whiff",
 };
 
 export const spinAxisSummary = (flight: BallFlight): string =>

@@ -12,12 +12,14 @@ import { clubheadOffset } from "./kinematics";
 import { integrateOrientation } from "./orient";
 import { type Phases, segment } from "./phases";
 import { type SwingStats, computeStats } from "./stats";
+import { type StrikeLocation, computeStrikeLocation } from "./strike";
 
 export interface SwingAnalysis {
     club: Club;
     hand: Handedness;
     calibration: Calibration;
     stats: SwingStats;
+    strike: StrikeLocation;
     flight: BallFlight;
     phases: Phases;
     /** Orientation per sample, for the replay. */
@@ -44,23 +46,38 @@ export function analyzeSwing(capture: SwingCapture, club: Club, hand: Handedness
     const grip = trackGrip(capture.samples, track.q, capture.still, calibration.addressQuat);
     const phases = segment(capture.samples, track, capture.impactIndex);
     const stats = computeStats(capture.samples, track, phases, club, grip);
-    const flight = estimateFlight(stats, club);
 
     const shaftLength = effectiveShaftLength(club);
     const t0 = capture.samples[0].t;
+    const clubheadPath = track.q.map((q, i) =>
+        add(grip.position[i], clubheadOffset(q, shaftLength)),
+    );
+    const times = capture.samples.map((s: ImuSample) => s.t - t0);
+
+    const strike = computeStrikeLocation(
+        clubheadPath,
+        times,
+        track.q,
+        track.omegaWorld,
+        phases.impactIndex,
+        club,
+        hand,
+    );
+    const flight = estimateFlight(stats, club, strike, hand);
 
     return {
         club,
         hand,
         calibration,
         stats,
+        strike,
         flight,
         phases,
         orientation: track.q,
         gripPath: grip.position,
         hub: grip.hub,
-        clubheadPath: track.q.map((q, i) => add(grip.position[i], clubheadOffset(q, shaftLength))),
-        times: capture.samples.map((s: ImuSample) => s.t - t0),
+        clubheadPath,
+        times,
         shaftLength,
     };
 }

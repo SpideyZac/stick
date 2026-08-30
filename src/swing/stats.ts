@@ -1,5 +1,6 @@
 import { type Club, effectiveShaftLength } from "../data/clubs";
 import type { ImuSample } from "../imu/types";
+import { linearFit, evalLinear } from "../math/fit";
 import { fitPlane } from "../math/plane";
 import { type Vec3, angleBetween, len, v3 } from "../math/vec3";
 import { WORLD_UP, horizontalAngle, toDeg, wrapAngle } from "./frames";
@@ -19,8 +20,9 @@ import type { Phases } from "./phases";
  * is near enough linear for that to hold, and it keeps every number reported at
  * the same instant.
  */
-const SHOCK_BACKOFF = 2;
-const FIT_SPAN = 5;
+/** Backed off from impact and fit forward from, since contact shocks the sensor. */
+export const SHOCK_BACKOFF = 2;
+export const FIT_SPAN = 5;
 
 export interface SwingStats {
     backswingSec: number;
@@ -121,21 +123,11 @@ function extrapolate(
     at: number,
     pick: (w: Vec3) => number,
 ): number {
-    const n = hi - lo + 1;
-    let sumX = 0;
-    let sumY = 0;
-    let sumXY = 0;
-    let sumXX = 0;
+    const xs: number[] = [];
+    const ys: number[] = [];
     for (let i = lo; i <= hi; i++) {
-        const y = pick(omega[i]);
-        sumX += i;
-        sumY += y;
-        sumXY += i * y;
-        sumXX += i * i;
+        xs.push(i);
+        ys.push(pick(omega[i]));
     }
-    const denominator = n * sumXX - sumX * sumX;
-    if (Math.abs(denominator) < 1e-12) return sumY / n;
-    const slope = (n * sumXY - sumX * sumY) / denominator;
-    const intercept = (sumY - slope * sumX) / n;
-    return slope * at + intercept;
+    return evalLinear(linearFit(xs, ys), at);
 }
