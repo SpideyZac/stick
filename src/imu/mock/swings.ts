@@ -20,7 +20,7 @@ const BASE: SwingParams = {
   backswingSec: 0.78,
   pauseSec: 0.05,
   downswingSec: 0.28,
-  followSec: 0.3,
+  followSec: 0.5,
   sweepDeg: 200,
   waggles: [],
   // A real BMI270 turns up with a degree or two of bias on each axis. Left in
