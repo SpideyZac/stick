@@ -1,7 +1,7 @@
 import type { Quat } from "../math/quat";
 import { rotate } from "../math/quat";
 import { type Vec3, add, cross, scale } from "../math/vec3";
-import { FACE_NORMAL_S, SHAFT_AXIS_S } from "./frames";
+import { type Handedness, SHAFT_AXIS_S, faceNormalS } from "./frames";
 
 /**
  * Forward kinematics for the clubhead.
@@ -22,7 +22,7 @@ export const clubheadVelocity = (omegaWorld: Vec3, offset: Vec3, gripVelocity: V
     add(gripVelocity, cross(omegaWorld, offset));
 
 /** Where the face is pointing, in world coordinates. */
-export const faceNormal = (q: Quat): Vec3 => rotate(q, FACE_NORMAL_S);
+export const faceNormal = (q: Quat, hand: Handedness): Vec3 => rotate(q, faceNormalS(hand));
 
 /** Unit vector down the shaft toward the clubhead, in world coordinates. */
 export const shaftDirection = (q: Quat): Vec3 => rotate(q, SHAFT_AXIS_S);

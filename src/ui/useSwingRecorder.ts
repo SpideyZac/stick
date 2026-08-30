@@ -62,7 +62,11 @@ export function useSwingRecorder(clubId: string, hand: Handedness, mockSwing: Sw
             (next) => setStatus(next),
         );
 
-        const source = new MockImuSource({ swing: mockSwing, clubId: clubRef.current });
+        const source = new MockImuSource({
+            swing: mockSwing,
+            clubId: clubRef.current,
+            hand: handRef.current,
+        });
         sourceRef.current = source;
         unsubscribeRef.current = source.onSamples((batch) => detector.push(batch));
         setStatus("settling");

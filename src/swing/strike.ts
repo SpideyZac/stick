@@ -10,7 +10,7 @@ import {
 } from "../math/fit";
 import { type Quat, fromAngularRate, mul, normalize as qnormalize, rotate } from "../math/quat";
 import { type Vec3, add, cross, dot, len, normalize, reject, sub, v3 } from "../math/vec3";
-import { FACE_NORMAL_S, WORLD_UP, type Handedness } from "./frames";
+import { WORLD_UP, faceNormalS, type Handedness } from "./frames";
 import { FIT_SPAN, SHOCK_BACKOFF } from "./stats";
 
 const NEWTON_ITERATIONS = 4;
@@ -226,12 +226,14 @@ export function computeStrikeLocation(
     }
 
     const d = sub(contactPoint, ball);
-    const faceNormal = rotate(faceQuat, FACE_NORMAL_S);
+    const faceNormal = rotate(faceQuat, faceNormalS(hand));
     const vertical = normalize(reject(WORLD_UP, faceNormal));
     const lateral = cross(vertical, faceNormal);
 
     const rawHighLowM = dot(d, vertical);
-    const rawHeelToeM = dot(d, lateral) * (hand === "right" ? 1 : -1);
+    // `lateral` is already built from the hand-correct face normal, so it points
+    // toward the toe for either hand on its own; no separate sign flip needed.
+    const rawHeelToeM = dot(d, lateral);
     const faceNormalM = dot(d, faceNormal);
     const rawOffCenterM = len(d);
 

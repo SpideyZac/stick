@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { BALL_RADIUS_M } from "../data/ball";
-import { FACE_NORMAL_S, WORLD_UP } from "../swing/frames";
+import { WORLD_UP, faceNormalS } from "../swing/frames";
 import type { SwingAnalysis } from "../swing/pipeline";
 
 const COLORS = {
@@ -244,11 +244,8 @@ export class SwingScene {
 
         const q = a.orientation[this.frame];
         const quat = new THREE.Quaternion(q.x, q.y, q.z, q.w);
-        const faceNormal = new THREE.Vector3(
-            FACE_NORMAL_S.x,
-            FACE_NORMAL_S.y,
-            FACE_NORMAL_S.z,
-        ).applyQuaternion(quat);
+        const faceS = faceNormalS(a.hand);
+        const faceNormal = new THREE.Vector3(faceS.x, faceS.y, faceS.z).applyQuaternion(quat);
         const face = faceNormal.clone().multiplyScalar(0.22);
         setLine(this.faceLine, [headPos, headPos.clone().add(face)]);
 

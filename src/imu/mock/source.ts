@@ -1,3 +1,4 @@
+import type { Handedness } from "../../swing/frames";
 import type { ImuSample, ImuSource } from "../types";
 import { type SwingId, getSwing } from "./swings";
 
@@ -8,6 +9,8 @@ const BATCH_MS = (BATCH / 400) * 1000;
 export interface MockOptions {
     swing: SwingId;
     clubId?: string;
+    /** Which hand the mock swing is synthesized for. Defaults to right. */
+    hand?: Handedness;
     /** Playback speed multiplier. 1 is real time. */
     speed?: number;
     /** Keep looping once the swing runs out. */
@@ -32,7 +35,7 @@ export class MockImuSource implements ImuSource {
 
     async start(): Promise<void> {
         this.stop();
-        this.samples = getSwing(this.opts.swing, this.opts.clubId).samples;
+        this.samples = getSwing(this.opts.swing, this.opts.clubId, this.opts.hand).samples;
         this.cursor = 0;
         this.tOffset = 0;
 

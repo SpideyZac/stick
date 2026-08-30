@@ -3,7 +3,7 @@ import type { ImuSample } from "../imu/types";
 import { linearFit, evalLinear } from "../math/fit";
 import { fitPlane } from "../math/plane";
 import { type Vec3, angleBetween, len, v3 } from "../math/vec3";
-import { WORLD_UP, horizontalAngle, toDeg, wrapAngle } from "./frames";
+import { type Handedness, WORLD_UP, horizontalAngle, toDeg, wrapAngle } from "./frames";
 import { clubheadOffset, clubheadVelocity, faceNormal } from "./kinematics";
 import type { GripTrack } from "./grip";
 import type { OrientationTrack } from "./orient";
@@ -50,6 +50,7 @@ export function computeStats(
     phases: Phases,
     club: Club,
     grip: GripTrack,
+    hand: Handedness,
 ): SwingStats {
     const shaft = effectiveShaftLength(club);
     const i = phases.impactIndex;
@@ -60,7 +61,7 @@ export function computeStats(
     // The hands are still travelling at contact, so the clubhead carries their
     // velocity on top of its own rotation about them.
     const velocity = clubheadVelocity(omega, offset, grip.velocity[i]);
-    const face = faceNormal(track.q[i]);
+    const face = faceNormal(track.q[i], hand);
 
     const horizontal = Math.hypot(velocity.x, velocity.z);
     const faceAngle = horizontalAngle(face);

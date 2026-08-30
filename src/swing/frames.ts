@@ -14,8 +14,23 @@ export const SHAFT_AXIS_S: Vec3 = v3(0, 0, 1);
 export const FORWARD_AXIS_S: Vec3 = v3(1, 0, 0);
 
 // With the shaft pointing down and +Xs at the golfer, the face normal comes out
-// along +Ys. That is the direction the ball starts in when the face is square.
+// along +Ys for a right-handed club. That is the direction the ball starts in
+// when the face is square.
 export const FACE_NORMAL_S: Vec3 = v3(0, 1, 0);
+
+/**
+ * Face normal in sensor coordinates, for either hand.
+ *
+ * The mount's own axes, +Xs (facing the golfer) and +Zs (down the shaft), are
+ * fixed by the physical clip and do not depend on which club is attached: you
+ * install it facing yourself either way. But a left-handed clubhead is a mirror
+ * image of a right-handed one, so relative to those same two mount axes its face
+ * sits on the opposite side. FACE_NORMAL_S alone is only correct for a
+ * right-handed club; every place that reads the face direction from a sensor
+ * orientation needs this, not the bare constant, once handedness is known.
+ */
+export const faceNormalS = (hand: Handedness): Vec3 =>
+    hand === "right" ? FACE_NORMAL_S : v3(-FACE_NORMAL_S.x, -FACE_NORMAL_S.y, -FACE_NORMAL_S.z);
 
 // World frame W, fixed at address:
 //   +Xw along the target line

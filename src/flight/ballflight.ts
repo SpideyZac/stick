@@ -162,7 +162,7 @@ export function estimateFlight(
         carryM,
         offlineM,
         apexM,
-        shape: classify(offlineM),
+        shape: classify(offlineM, hand),
         path,
     };
 }
@@ -233,8 +233,15 @@ function whiffedFlight(): BallFlight {
     };
 }
 
-function classify(offlineM: number): ShotShape {
-    const yards = offlineM * 1.09361;
+/**
+ * Draw/fade/hook/slice are named relative to the golfer, not the target line:
+ * a draw curves from the golfer's trail side back toward target, which is
+ * right-to-left for a righty but left-to-right for a lefty. `offlineM` is a
+ * world quantity (positive is physically right of target, regardless of who
+ * hit it), so a left-handed shot is mirrored before naming it.
+ */
+function classify(offlineM: number, hand: Handedness): ShotShape {
+    const yards = offlineM * 1.09361 * (hand === "right" ? 1 : -1);
     const magnitude = Math.abs(yards);
     if (magnitude < 4) return "straight";
     if (magnitude < 18) return yards > 0 ? "fade" : "draw";

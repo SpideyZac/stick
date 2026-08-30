@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { getClub } from "../data/clubs";
 import { getSwing } from "../imu/mock/swings";
 import type { SwingId } from "../imu/mock/swings";
+import { SWING_PRESETS } from "../imu/mock/swings";
+import { synthesizeSwing, type SwingParams } from "../imu/mock/synth";
 import { SwingDetector, type SwingCapture } from "./detect";
 import { analyzeSwing } from "./pipeline";
 
@@ -267,5 +269,62 @@ describe("two segment model", () => {
     it("starts the hands at the origin, where the grip sat at address", () => {
         const a = analyzeSwing(capture("good"), CLUB, "right");
         expect(Math.hypot(a.gripPath[0].x, a.gripPath[0].y, a.gripPath[0].z)).toBeLessThan(1e-6);
+    });
+});
+
+describe("left-handed golfers", () => {
+    // The "good" preset is defined for a right-handed golfer. Re-synthesizing it
+    // with hand: "left" and otherwise identical parameters is the mirror image
+    // of the same swing, so a correct pipeline has to read it as a square,
+    // center-struck shot too, not as some other swing entirely.
+    function synthesizeLeft(id: SwingId): SwingParams {
+        return { ...SWING_PRESETS[id], hand: "left" };
+    }
+
+    function analyzeLeft(id: SwingId) {
+        const { samples } = synthesizeSwing(synthesizeLeft(id));
+        let out: SwingCapture | null = null;
+        const d = new SwingDetector((c) => (out = c));
+        for (let i = 0; i < samples.length; i += 8) d.push(samples.slice(i, i + 8));
+        if (!out) throw new Error("no capture");
+        return analyzeSwing(out, CLUB, "left");
+    }
+
+    it("reads a mirrored square swing as square, not tilted 180 degrees off", () => {
+        // Before faceNormalS existed, the face normal used a right-handed sensor
+        // convention unconditionally, so a left-handed address pose came out
+        // reading the face as pointing straight back at the golfer instead of
+        // down the target line.
+        const a = analyzeLeft("good");
+        expect(Math.abs(a.stats.faceAngleDeg)).toBeLessThan(10);
+        expect(Math.abs(a.flight.offlineM) * YARDS).toBeLessThan(12);
+    });
+
+    it("still reads a center strike as center, mirrored", () => {
+        const a = analyzeLeft("good");
+        expect(a.strike.zone).toBe("center");
+        expect(a.strike.contactMade).toBe(true);
+    });
+
+    it("names a mirrored slice-causing fault a slice, not a hook", () => {
+        // A righty slice comes from planeYawDeg/faceRollDeg both positive (see
+        // the "slice" preset). The mirror image of that same swing fault, for a
+        // lefty, is both negated.
+        const params: SwingParams = {
+            ...synthesizeLeft("good"),
+            planeYawDeg: -SWING_PRESETS.slice.planeYawDeg,
+            faceRollDeg: -SWING_PRESETS.slice.faceRollDeg,
+        };
+        const { samples } = synthesizeSwing(params);
+        let out: SwingCapture | null = null;
+        const d = new SwingDetector((c) => (out = c));
+        for (let i = 0; i < samples.length; i += 8) d.push(samples.slice(i, i + 8));
+        if (!out) throw new Error("no capture");
+        const a = analyzeSwing(out, CLUB, "left");
+
+        // Ball misses to the golfer's dominant side, same as the righty slice
+        // test above, which for a lefty is physically the opposite side of target.
+        expect(a.flight.offlineM).toBeLessThan(0);
+        expect(a.flight.shape).toBe("slice");
     });
 });

@@ -3,7 +3,7 @@ import type { Quat } from "../math/quat";
 import { rotate } from "../math/quat";
 import { type Vec3, add, addScaled, len, normalize, scale, sub, v3 } from "../math/vec3";
 import { accelOf } from "./calibrate";
-import { GRAVITY, WORLD_UP } from "./frames";
+import { GRAVITY, type Handedness, WORLD_UP } from "./frames";
 
 /**
  * Where the hands sit relative to the grip at address, and how far the arms
@@ -45,9 +45,9 @@ export function trackGrip(
     samples: readonly ImuSample[],
     orientation: readonly Quat[],
     stillWindow: readonly ImuSample[],
-    addressQuat: Quat,
+    hand: Handedness,
 ): GripTrack {
-    const accelBias = estimateAccelBias(stillWindow, addressQuat);
+    const accelBias = estimateAccelBias(stillWindow);
     const n = samples.length;
     const velocity: Vec3[] = new Array(n);
     const raw: Vec3[] = new Array(n);
@@ -71,8 +71,11 @@ export function trackGrip(
         v = addScaled(v, a, dt);
     }
 
+    // A right handed golfer stands on -Zw (see frames.ts), so the hub sits back
+    // toward -Z from the grip. A lefty stands on the mirror side, at +Zw.
+    const back = hand === "right" ? -1 : 1;
     const hub = scale(
-        v3(0, Math.cos(HUB_TILT_FROM_VERTICAL), -Math.sin(HUB_TILT_FROM_VERTICAL)),
+        v3(0, Math.cos(HUB_TILT_FROM_VERTICAL), back * Math.sin(HUB_TILT_FROM_VERTICAL)),
         ARM_LENGTH,
     );
 
@@ -96,14 +99,14 @@ function onArmSphere(rawPosition: Vec3, hub: Vec3): Vec3 {
  * Only the part along gravity is recoverable. A sitting sensor reads one vector,
  * and there is no way to tell a sensor that is tilted from one that is biased
  * sideways: both move the reading the same way. So the sideways part gets
- * absorbed into the address frame as a small tilt, and what is left over here is
- * the magnitude, which is the piece that would otherwise integrate straight into
- * the velocity estimate.
+ * absorbed into the address frame as a small tilt (see `calibrate.ts`), and what
+ * is left over here is the magnitude, which is the piece that would otherwise
+ * integrate straight into the velocity estimate.
  *
  * A calibrated sensor makes both small. An uncalibrated one costs roughly a
  * degree of face angle per twenty milli-g, and no amount of maths here recovers it.
  */
-export function estimateAccelBias(stillWindow: readonly ImuSample[], addressQuat: Quat): Vec3 {
+export function estimateAccelBias(stillWindow: readonly ImuSample[]): Vec3 {
     if (stillWindow.length === 0) return v3(0, 0, 0);
 
     let sum = v3(0, 0, 0);
@@ -113,6 +116,5 @@ export function estimateAccelBias(stillWindow: readonly ImuSample[], addressQuat
     const magnitude = len(measured);
     if (magnitude < 1e-6) return v3(0, 0, 0);
     // Whatever the reading is longer or shorter than one g, along its own direction.
-    void addressQuat;
     return scale(measured, (magnitude - GRAVITY) / magnitude);
 }

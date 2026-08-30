@@ -24,7 +24,10 @@ function Stat({ label, value, note }: { label: string; value: string; note?: str
 }
 
 export function StatsPanel({ analysis }: { analysis: SwingAnalysis }) {
-    const { stats, strike, flight, calibration } = analysis;
+    const { stats, strike, flight, calibration, hand } = analysis;
+    // "Open/closed" and "in to out/out to in" are named relative to the
+    // golfer, so a left-handed swing reads the opposite sign of a righty's.
+    const mirror = hand === "right" ? 1 : -1;
 
     return (
         <div className="stats">
@@ -55,7 +58,7 @@ export function StatsPanel({ analysis }: { analysis: SwingAnalysis }) {
             <div className="stat-row">
                 <Stat
                     label="Face to path"
-                    value={sided(stats.faceToPathDeg, "closed", "open")}
+                    value={sided(stats.faceToPathDeg * mirror, "closed", "open")}
                     note="what curves it"
                 />
                 <Stat
@@ -68,12 +71,12 @@ export function StatsPanel({ analysis }: { analysis: SwingAnalysis }) {
                 <Stat
                     label="Face"
                     value={`${fixed(stats.faceAngleDeg)}${DEGREE}`}
-                    note={stats.faceAngleDeg > 0 ? "open" : "closed"}
+                    note={stats.faceAngleDeg * mirror > 0 ? "open" : "closed"}
                 />
                 <Stat
                     label="Path"
                     value={`${fixed(stats.pathAngleDeg)}${DEGREE}`}
-                    note={stats.pathAngleDeg > 0 ? "in to out" : "out to in"}
+                    note={stats.pathAngleDeg * mirror > 0 ? "in to out" : "out to in"}
                 />
                 <Stat
                     label="Attack"

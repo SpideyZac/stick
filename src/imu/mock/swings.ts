@@ -1,5 +1,6 @@
 import { getClub } from "../../data/clubs";
 import { v3 } from "../../math/vec3";
+import type { Handedness } from "../../swing/frames";
 import { type SwingParams, type SynthResult, synthesizeSwing } from "./synth";
 
 export type SwingId =
@@ -159,14 +160,18 @@ export const SWING_IDS = Object.keys(SWING_PRESETS) as SwingId[];
 
 const cache = new Map<string, SynthResult>();
 
-/** Synthesis is deterministic, so the same club and swing only gets built once. */
-export function getSwing(id: SwingId, clubId?: string): SynthResult {
-    const key = `${id}:${clubId ?? BASE.club.id}`;
+/** Synthesis is deterministic, so the same club, hand, and swing only gets built once. */
+export function getSwing(id: SwingId, clubId?: string, hand: Handedness = "right"): SynthResult {
+    const key = `${id}:${clubId ?? BASE.club.id}:${hand}`;
     const hit = cache.get(key);
     if (hit) return hit;
 
     const preset = SWING_PRESETS[id];
-    const built = synthesizeSwing(clubId ? { ...preset, club: getClub(clubId) } : preset);
+    const built = synthesizeSwing({
+        ...preset,
+        ...(clubId ? { club: getClub(clubId) } : {}),
+        hand,
+    });
     cache.set(key, built);
     return built;
 }

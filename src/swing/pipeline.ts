@@ -43,9 +43,9 @@ export interface SwingAnalysis {
 export function analyzeSwing(capture: SwingCapture, club: Club, hand: Handedness): SwingAnalysis {
     const calibration = calibrate(capture.still, club, hand);
     const track = integrateOrientation(capture.samples, calibration);
-    const grip = trackGrip(capture.samples, track.q, capture.still, calibration.addressQuat);
+    const grip = trackGrip(capture.samples, track.q, capture.still, hand);
     const phases = segment(capture.samples, track, capture.impactIndex);
-    const stats = computeStats(capture.samples, track, phases, club, grip);
+    const stats = computeStats(capture.samples, track, phases, club, grip, hand);
 
     const shaftLength = effectiveShaftLength(club);
     const t0 = capture.samples[0].t;

@@ -15,12 +15,12 @@ import {
 } from "../../math/vec3";
 import {
     DEG,
-    FACE_NORMAL_S,
     FORWARD_AXIS_S,
     GRAVITY,
     type Handedness,
     SHAFT_AXIS_S,
     WORLD_UP,
+    faceNormalS,
     fromSensorAxes,
     horizontalAngle,
 } from "../../swing/frames";
@@ -109,7 +109,10 @@ export interface SynthResult {
 // arc about this hub so the accelerometer sees real motion, unlike the fixed grip
 // model the analysis uses. Keeping the two models different is the point, it
 // stops the pipeline being tested against its own assumptions.
-const HUB = v3(0, 0.55, -0.35);
+//
+// -Z is back toward a right handed golfer's stance (see frames.ts); a lefty
+// stands on the mirror side, at +Z.
+const hubFor = (hand: Handedness): Vec3 => v3(0, 0.55, hand === "right" ? -0.35 : 0.35);
 /** Hands turn a good deal less than the shaft, the rest is wrist hinge. */
 const HAND_FRACTION = 0.3;
 const IMPACT_PEAK_G = 16;
@@ -155,8 +158,9 @@ export function synthesizeSwing(p: SwingParams): SynthResult {
     const q: Quat[] = new Array(n);
     const omegaW: Vec3[] = new Array(n);
     const grip: Vec3[] = new Array(n);
-    const handRadius = len(HUB);
-    const handStart = normalize(scale(HUB, -1));
+    const hub = hubFor(p.hand);
+    const handRadius = len(hub);
+    const handStart = normalize(scale(hub, -1));
 
     // Where the hub sits at time t. Ramped in from zero at the top of the
     // backswing to full drift at impact, so address-time geometry (t=0, ramp=0)
@@ -172,7 +176,7 @@ export function synthesizeSwing(p: SwingParams): SynthResult {
     const hubAt = (t: number): Vec3 => {
         const ramp = smoothstep(clamp01((t - tTop) / driftSpan));
         return addScaled(
-            addScaled(HUB, WORLD_UP, p.verticalDriftM * ramp),
+            addScaled(hub, WORLD_UP, p.verticalDriftM * ramp),
             lateralAxis,
             p.lateralDriftM * ramp,
         );
@@ -224,7 +228,7 @@ export function synthesizeSwing(p: SwingParams): SynthResult {
         const gS = rotate(conj(q[i]), omegaW[i]);
 
         const spike = impactSpike(i, impactIndex);
-        if (spike > 0) aS = addScaled(aS, FACE_NORMAL_S, -spike * IMPACT_PEAK_G * GRAVITY);
+        if (spike > 0) aS = addScaled(aS, faceNormalS(p.hand), -spike * IMPACT_PEAK_G * GRAVITY);
 
         samples[i] = {
             t: i * dt,
@@ -256,7 +260,7 @@ export function synthesizeSwing(p: SwingParams): SynthResult {
             addressQuat: q0,
             backswingSec: p.backswingSec,
             downswingSec: p.downswingSec,
-            ...truthStatsAt(q, omegaW, gripVel, impactIndex, effectiveShaftLength(p.club)),
+            ...truthStatsAt(q, omegaW, gripVel, impactIndex, effectiveShaftLength(p.club), p.hand),
         },
     };
 }
@@ -271,9 +275,10 @@ export function truthStatsAt(
     gripVel: readonly Vec3[],
     impactIndex: number,
     shaft: number,
+    hand: Handedness,
 ) {
     const i = impactIndex;
-    const faceW = rotate(q[i], FACE_NORMAL_S);
+    const faceW = rotate(q[i], faceNormalS(hand));
     const r = scale(rotate(q[i], SHAFT_AXIS_S), shaft);
     // The hands are moving too, so the clubhead carries both terms. Leaving the
     // grip term out is what made the old fixed grip model read about 20 percent low.

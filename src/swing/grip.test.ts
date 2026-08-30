@@ -23,7 +23,7 @@ function track(id: SwingId) {
     const cap = capture(id);
     const cal = calibrate(cap.still, CLUB, "right");
     const orientation = integrateOrientation(cap.samples, cal);
-    const grip = trackGrip(cap.samples, orientation.q, cap.still, cal.addressQuat);
+    const grip = trackGrip(cap.samples, orientation.q, cap.still, "right");
     const truth = getSwing(id).truth;
     return { cap, grip, truth, offset: Math.round(cap.samples[0].t * 400) };
 }
