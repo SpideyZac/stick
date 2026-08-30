@@ -30,9 +30,16 @@ describe('round trip against ground truth', () => {
       const { stats } = analyze(id)
       const truth = getSwing(id).truth
 
-      expect(stats.faceAngleDeg, 'face').toBeCloseTo(truth.faceAngleDeg, 0)
-      expect(stats.pathAngleDeg, 'path').toBeCloseTo(truth.pathAngleDeg, 0)
-      expect(stats.faceToPathDeg, 'face to path').toBeCloseTo(truth.faceToPathDeg, 0)
+      // One degree is the floor, and it is set by the sensor rather than the
+      // maths. A few milli-g of accelerometer bias at address is indistinguishable
+      // from a fraction of a degree of tilt, and that tilt carries into every
+      // angle measured against the address frame.
+      const within = (got: number, want: number, what: string) =>
+        expect(Math.abs(got - want), what).toBeLessThan(1)
+
+      within(stats.faceAngleDeg, truth.faceAngleDeg, 'face')
+      within(stats.pathAngleDeg, truth.pathAngleDeg, 'path')
+      within(stats.faceToPathDeg, truth.faceToPathDeg, 'face to path')
       // Attack angle is the touchiest number here. It is a small vertical
       // component of a large velocity vector, so the same fraction of a percent
       // that leaves speed inside half a metre per second shows up as a degree.
@@ -174,5 +181,72 @@ describe('analysis output for the replay', () => {
     const a = analyze('good')
     expect(a.stats.impactSec).toBeLessThan(a.times[a.times.length - 1])
     expect(a.times[a.times.length - 1] - a.stats.impactSec).toBeGreaterThan(0.25)
+  })
+})
+
+describe('the flushed 80 mph seven iron', () => {
+  it('swings at about 80 mph and carries 150 to 160', () => {
+    const { stats, flight } = analyzeSwing(capture('flush'), CLUB, 'right')
+    expect(stats.clubheadSpeedMps * MPH).toBeGreaterThan(77)
+    expect(stats.clubheadSpeedMps * MPH).toBeLessThan(83)
+    expect(flight.carryM * YARDS).toBeGreaterThan(148)
+    expect(flight.carryM * YARDS).toBeLessThan(165)
+  })
+
+  it('is struck square, which is what makes it a flush one', () => {
+    const { stats, flight } = analyzeSwing(capture('flush'), CLUB, 'right')
+    expect(Math.abs(stats.faceToPathDeg)).toBeLessThan(2)
+    expect(Math.abs(flight.offlineM * YARDS)).toBeLessThan(12)
+  })
+
+  it('stays inside what the sensor can actually report', () => {
+    // 80 mph off a fixed grip would need over 2300 dps, past the BMI270 range.
+    // Modelling the hands is what makes this swing representable at all.
+    const peak = Math.max(
+      ...getSwing('flush').samples.map((s) => Math.hypot(s.gx, s.gy, s.gz) * (180 / Math.PI)),
+    )
+    expect(peak).toBeLessThan(2000)
+    expect(peak).toBeGreaterThan(1700)
+  })
+
+  it('outruns the easier swing it is based on', () => {
+    const easy = analyzeSwing(capture('good'), CLUB, 'right')
+    const flush = analyzeSwing(capture('flush'), CLUB, 'right')
+    expect(flush.stats.clubheadSpeedMps).toBeGreaterThan(easy.stats.clubheadSpeedMps)
+    expect(flush.flight.carryM).toBeGreaterThan(easy.flight.carryM)
+  })
+
+  it('runs a textbook three to one tempo', () => {
+    const { stats } = analyzeSwing(capture('flush'), CLUB, 'right')
+    expect(stats.tempoRatio).toBeGreaterThan(2.4)
+    expect(stats.tempoRatio).toBeLessThan(3.6)
+  })
+})
+
+describe('two segment model', () => {
+  it('counts the hands, which the fixed grip model could not', () => {
+    const a = analyzeSwing(capture('flush'), CLUB, 'right')
+    const i = a.phases.impactIndex
+    // Rotation about the hands alone leaves out roughly a fifth of the speed.
+    const rotationOnly = Math.hypot(
+      a.clubheadPath[i].x - a.gripPath[i].x,
+      a.clubheadPath[i].y - a.gripPath[i].y,
+      a.clubheadPath[i].z - a.gripPath[i].z,
+    )
+    expect(rotationOnly).toBeCloseTo(a.shaftLength, 6)
+    expect(a.stats.clubheadSpeedMps * MPH).toBeGreaterThan(77)
+  })
+
+  it('moves the hands through the swing instead of pinning them', () => {
+    const a = analyzeSwing(capture('good'), CLUB, 'right')
+    const moved = a.gripPath.some(
+      (p) => Math.hypot(p.x - a.gripPath[0].x, p.y - a.gripPath[0].y, p.z - a.gripPath[0].z) > 0.2,
+    )
+    expect(moved).toBe(true)
+  })
+
+  it('starts the hands at the origin, where the grip sat at address', () => {
+    const a = analyzeSwing(capture('good'), CLUB, 'right')
+    expect(Math.hypot(a.gripPath[0].x, a.gripPath[0].y, a.gripPath[0].z)).toBeLessThan(1e-6)
   })
 })

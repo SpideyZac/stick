@@ -2,12 +2,14 @@ import { type Club, effectiveShaftLength } from '../../data/clubs'
 import { type Quat, conj, fromAngularRate, mul, normalize as qnorm, rotate } from '../../math/quat'
 import {
   type Vec3,
+  add,
   addScaled,
   cross,
   len,
   normalize,
   reject,
   rotateAbout,
+  sub,
   scale,
   v3,
 } from '../../math/vec3'
@@ -54,6 +56,8 @@ export interface SwingParams {
   gyroBiasDps: Vec3
   gyroNoiseDps: number
   accelNoiseG: number
+  /** Accelerometer bias. Small, but it integrates into grip velocity error. */
+  accelBiasG: Vec3
   seed: number
 }
 
@@ -62,6 +66,10 @@ export interface SwingTruth {
   q: Quat[]
   /** Noise free angular velocity in world coordinates, one per sample. */
   omegaW: Vec3[]
+  /** Where the grip really was, relative to its address position. */
+  gripPos: Vec3[]
+  /** And how fast it was moving. The analysis has to recover this from accel. */
+  gripVel: Vec3[]
   takeawayIndex: number
   topIndex: number
   impactIndex: number
@@ -162,6 +170,7 @@ export function synthesizeSwing(p: SwingParams): SynthResult {
   // Pass two: turn the motion into what the chip would actually report.
   const samples: ImuSample[] = new Array(n)
   const bias = scale(p.gyroBiasDps, DEG)
+  const accelBias = scale(p.accelBiasG, GRAVITY)
   const gyroSigma = p.gyroNoiseDps * DEG
   const accelSigma = p.accelNoiseG * GRAVITY
 
@@ -178,14 +187,19 @@ export function synthesizeSwing(p: SwingParams): SynthResult {
 
     samples[i] = {
       t: i * dt,
-      ax: quantize(aS.x + gaussian(rand) * accelSigma, ACCEL_LSB),
-      ay: quantize(aS.y + gaussian(rand) * accelSigma, ACCEL_LSB),
-      az: quantize(aS.z + gaussian(rand) * accelSigma, ACCEL_LSB),
+      ax: quantize(aS.x + accelBias.x + gaussian(rand) * accelSigma, ACCEL_LSB),
+      ay: quantize(aS.y + accelBias.y + gaussian(rand) * accelSigma, ACCEL_LSB),
+      az: quantize(aS.z + accelBias.z + gaussian(rand) * accelSigma, ACCEL_LSB),
       gx: quantize(gS.x + bias.x + gaussian(rand) * gyroSigma, GYRO_LSB),
       gy: quantize(gS.y + bias.y + gaussian(rand) * gyroSigma, GYRO_LSB),
       gz: quantize(gS.z + bias.z + gaussian(rand) * gyroSigma, GYRO_LSB),
     }
   }
+
+  // Grip motion, expressed relative to where the grip sat at address, which is
+  // the origin the analysis works in.
+  const gripPos = grip.map((g) => sub(g, grip[0]))
+  const gripVel = gripPos.map((_, i) => firstDifference(gripPos, i, dt))
 
   return {
     samples,
@@ -193,13 +207,15 @@ export function synthesizeSwing(p: SwingParams): SynthResult {
     truth: {
       q,
       omegaW,
+      gripPos,
+      gripVel,
       takeawayIndex,
       topIndex,
       impactIndex,
       addressQuat: q0,
       backswingSec: p.backswingSec,
       downswingSec: p.downswingSec,
-      ...truthStatsAt(q, omegaW, impactIndex, effectiveShaftLength(p.club)),
+      ...truthStatsAt(q, omegaW, gripVel, impactIndex, effectiveShaftLength(p.club)),
     },
   }
 }
@@ -211,13 +227,16 @@ export function synthesizeSwing(p: SwingParams): SynthResult {
 export function truthStatsAt(
   q: readonly Quat[],
   omegaW: readonly Vec3[],
+  gripVel: readonly Vec3[],
   impactIndex: number,
   shaft: number,
 ) {
   const i = impactIndex
   const faceW = rotate(q[i], FACE_NORMAL_S)
   const r = scale(rotate(q[i], SHAFT_AXIS_S), shaft)
-  const v = cross(omegaW[i], r)
+  // The hands are moving too, so the clubhead carries both terms. Leaving the
+  // grip term out is what made the old fixed grip model read about 20 percent low.
+  const v = add(gripVel[i], cross(omegaW[i], r))
   const horizontal = Math.hypot(v.x, v.z)
   return {
     faceAngleDeg: horizontalAngle(faceW) / DEG,
@@ -291,3 +310,12 @@ function impactSpike(i: number, impactIndex: number): number {
 }
 
 
+
+/** Central first difference, clamped at the ends. */
+function firstDifference(p: Vec3[], i: number, dt: number): Vec3 {
+  const a = p[Math.max(0, i - 1)]
+  const b = p[Math.min(p.length - 1, i + 1)]
+  const span = (Math.min(p.length - 1, i + 1) - Math.max(0, i - 1)) * dt
+  if (span <= 0) return v3(0, 0, 0)
+  return v3((b.x - a.x) / span, (b.y - a.y) / span, (b.z - a.z) / span)
+}

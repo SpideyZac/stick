@@ -8,6 +8,8 @@ const COLORS = {
   gridCenter: 0x3c4a41,
   target: 0x7bd88f,
   shaft: 0xcfd8d1,
+  arm: 0x6f8579,
+  hub: 0x46564c,
   head: 0xe8efe9,
   trail: 0x7bd88f,
   face: 0xe5b567,
@@ -32,6 +34,9 @@ export class SwingScene {
   private root = new THREE.Group()
 
   private shaft: THREE.Mesh
+  private arm: THREE.Mesh
+  private hands: THREE.Mesh
+  private hubMesh: THREE.Mesh
   private head: THREE.Mesh
   private faceLine: THREE.Line
   private trail: THREE.Line
@@ -90,6 +95,26 @@ export class SwingScene {
       new THREE.MeshLambertMaterial({ color: COLORS.shaft }),
     )
     this.root.add(this.shaft)
+
+    // Second segment: hub to hands. Drawn thicker and darker so it reads as an
+    // arm rather than part of the club.
+    this.arm = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.018, 0.014, 1, 6),
+      new THREE.MeshLambertMaterial({ color: COLORS.arm }),
+    )
+    this.root.add(this.arm)
+
+    this.hands = new THREE.Mesh(
+      new THREE.SphereGeometry(0.03, 10, 8),
+      new THREE.MeshLambertMaterial({ color: COLORS.arm }),
+    )
+    this.root.add(this.hands)
+
+    this.hubMesh = new THREE.Mesh(
+      new THREE.SphereGeometry(0.045, 10, 8),
+      new THREE.MeshLambertMaterial({ color: COLORS.hub }),
+    )
+    this.root.add(this.hubMesh)
 
     this.head = new THREE.Mesh(
       new THREE.SphereGeometry(0.035, 12, 8),
@@ -156,6 +181,8 @@ export class SwingScene {
     ])
 
     this.shaft.scale.y = analysis.shaftLength
+    this.hubMesh.position.set(analysis.hub.x, analysis.hub.y, analysis.hub.z)
+    this.arm.scale.y = Math.hypot(analysis.hub.x, analysis.hub.y, analysis.hub.z) || 1
     this.frame = 0
     this.setFrame(0)
   }
@@ -167,12 +194,19 @@ export class SwingScene {
     this.frame = Math.max(0, Math.min(n - 1, Math.round(frame)))
 
     const p = a.clubheadPath[this.frame]
-    const headPos = new THREE.Vector3(p.x, p.y, p.z)
-    this.head.position.copy(headPos)
+    const g = a.gripPath[this.frame]
+    const headPos = TMP_HEAD.set(p.x, p.y, p.z)
+    const gripPos = TMP_GRIP.set(g.x, g.y, g.z)
+    const hubPos = TMP_HUB.set(a.hub.x, a.hub.y, a.hub.z)
 
-    // Shaft runs from the grip at the origin out to the clubhead.
-    this.shaft.position.copy(headPos).multiplyScalar(0.5)
-    this.shaft.quaternion.setFromUnitVectors(UP, headPos.clone().normalize())
+    this.head.position.copy(headPos)
+    this.hands.position.copy(gripPos)
+
+    // Two segments now: hub to hands, then hands to clubhead. The hands really do
+    // travel, and pinning them at a point is what used to make this look like a
+    // windmill instead of a swing.
+    placeSegment(this.arm, hubPos, gripPos)
+    placeSegment(this.shaft, gripPos, headPos)
 
     const q = a.orientation[this.frame]
     const quat = new THREE.Quaternion(q.x, q.y, q.z, q.w)
@@ -345,4 +379,19 @@ function setLine(line: THREE.Line, points: THREE.Vector3[]): void {
   points.forEach((p, i) => attribute.setXYZ(i, p.x, p.y, p.z))
   attribute.needsUpdate = true
   line.geometry.setDrawRange(0, points.length)
+}
+
+// Scratch vectors, reused so a frame costs no allocation.
+const TMP_HEAD = new THREE.Vector3()
+const TMP_GRIP = new THREE.Vector3()
+const TMP_HUB = new THREE.Vector3()
+const TMP_DIR = new THREE.Vector3()
+
+/** Stand a cylinder between two points. Its length is already set by scale.y. */
+function placeSegment(mesh: THREE.Mesh, from: THREE.Vector3, to: THREE.Vector3): void {
+  mesh.position.copy(from).add(to).multiplyScalar(0.5)
+  TMP_DIR.copy(to).sub(from)
+  const length = TMP_DIR.length()
+  if (length < 1e-6) return
+  mesh.quaternion.setFromUnitVectors(UP, TMP_DIR.divideScalar(length))
 }

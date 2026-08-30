@@ -32,6 +32,7 @@ The UI knows about `SwingAnalysis` and nothing else. The pipeline knows about
 | Mount and world frame conventions | `src/swing/frames.ts` |
 | Swing start detection | `src/swing/detect.ts` |
 | Calibration, orientation, kinematics | `src/swing/{calibrate,orient,kinematics}.ts` |
+| Hand motion from the accelerometer | `src/swing/grip.ts` |
 | Phases and stats | `src/swing/{phases,stats}.ts` |
 | Ball flight | `src/flight/ballflight.ts` |
 | Replay | `src/three/scene.ts` |
@@ -44,16 +45,19 @@ batches because that is how BLE notifications arrive.
 
 `src/imu/types.ts` carries the BMI270 constants the mock quantizes to: 16g and
 2000 dps, which at 400 Hz is about 5.6 kB/s packed as int16. Both ranges have
-headroom at high school swing speeds. The canned swings peak near 1850 dps and
+headroom at high school swing speeds. The canned swings peak near 1880 dps and
 16g, so they exercise the top of both.
 
 ## Things worth knowing
 
 **The mock is physically consistent.** Acceleration is derived from the same
-motion that generates the gyro trace, and the synthesizer swings the grip on a
-real arc while the analysis assumes the grip is fixed. The two models differ on
-purpose, so the pipeline is never tested against its own assumptions. Noise,
-per-axis bias, and sensor quantization are all modelled.
+motion that generates the gyro trace, so the accelerometer sees exactly what that
+swing would have produced. The synthesizer and the analysis still model the hands
+differently on purpose: the synthesizer swings them on its own arc with its own
+constants, and the analysis never sees those, it recovers hand motion from the
+accelerometer alone. So the pipeline is not being graded against its own
+assumptions. Noise, per-axis gyro and accelerometer bias, and sensor quantization
+are all modelled.
 
 **Yaw is unobservable.** No magnetometer, so nothing pins absolute heading. Over
 a one second swing with the gyro bias removed the drift is small, and every angle
@@ -74,10 +78,34 @@ That is what catches a waggle big and slow enough to survive the first pass.
 Buffering is cheap, so a provisional capture costs nothing when it turns out to
 be wrong.
 
-**Clubhead speed is a slight underestimate.** Forward kinematics puts the grip at
-the origin, so hand travel is not counted. Every angle reported is directional
-and unaffected. This is the tradeoff that keeps position as geometry instead of a
-double integration of the accelerometer, which drifts hopelessly over a swing.
+**The hands are modelled, and they had to be.** The club is two segments: a hub
+the arms pivot about, and the shaft. Pinning the grip at a point costs about
+twenty percent of clubhead speed, because a good deal of it comes from the hands
+travelling rather than the shaft rotating. It is not only an accuracy question.
+Getting a 7 iron to 80 mph off a fixed grip needs over 2300 dps at the sensor,
+past what a BMI270 can report at all, so the swing would not have been
+representable in the first place.
+
+**Hand speed is measured, not assumed.** The accelerometer is at the grip, so it
+sees the grip's own acceleration. The spec rules out double integrating for
+position and is right to, but velocity is one integration, not two, and it starts
+from a boundary condition we know for free: the club is sitting still at address.
+Over the second or so to impact that holds up, and it is checked against the
+synthesizer's known hand motion in `src/swing/grip.test.ts`.
+
+Position is still two integrations and still drifts. So the direction comes from
+the integral and the distance comes from the arms, which is a fixed length and
+cannot drift. That removes the radial error, the part that would visibly stretch
+and squash the golfer's arms. What is left slides the hands slightly along their
+own arc, which is hard to see. Only the replay depends on it; every number the
+app reports comes from the velocity.
+
+**Accelerometer bias sets a floor of about a degree.** A sensor sitting still
+gives one vector, and there is no way to tell a tilted sensor from a sideways
+biased one. That part gets absorbed into the address frame as a small tilt and
+carries into every angle measured against it. Only the along-gravity component is
+recoverable. Calibrating the accelerometer is what buys accuracy here, not
+anything in this repo.
 
 **No driver.** It is the one club that gets teed up, and the address calibration
 assumes a grounded club.
@@ -88,4 +116,5 @@ assumes a grounded club.
 `src/swing/pipeline.test.ts`: the synthesizer knows exactly what face angle,
 path, and speed it produced, and the pipeline has to give those back from
 nothing but noisy, biased, quantized samples. Face, path, and face to path
-recover inside half a degree.
+recover inside a degree, which is the accelerometer bias floor rather than the
+maths. `src/swing/grip.test.ts` does the same for hand speed.

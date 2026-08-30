@@ -4,6 +4,7 @@ import { fitPlane } from '../math/plane'
 import { type Vec3, angleBetween, len, v3 } from '../math/vec3'
 import { WORLD_UP, horizontalAngle, toDeg, wrapAngle } from './frames'
 import { clubheadOffset, clubheadVelocity, faceNormal } from './kinematics'
+import type { GripTrack } from './grip'
 import type { OrientationTrack } from './orient'
 import type { Phases } from './phases'
 
@@ -46,6 +47,7 @@ export function computeStats(
   track: OrientationTrack,
   phases: Phases,
   club: Club,
+  grip: GripTrack,
 ): SwingStats {
   const shaft = effectiveShaftLength(club)
   const i = phases.impactIndex
@@ -53,7 +55,9 @@ export function computeStats(
 
   const omega = omegaAtImpact(track.omegaWorld, i)
   const offset = clubheadOffset(track.q[i], shaft)
-  const velocity = clubheadVelocity(omega, offset)
+  // The hands are still travelling at contact, so the clubhead carries their
+  // velocity on top of its own rotation about them.
+  const velocity = clubheadVelocity(omega, offset, grip.velocity[i])
   const face = faceNormal(track.q[i])
 
   const horizontal = Math.hypot(velocity.x, velocity.z)
