@@ -99,3 +99,30 @@ export function angleBetweenQuats(a: Quat, b: Quat): number {
   const rel = mul(conj(a), b)
   return toAxisAngle(rel).angle
 }
+
+/**
+ * Quaternion from three orthonormal basis vectors. Pass the world axes expressed
+ * in sensor coordinates; the result rotates a sensor-frame vector into world.
+ */
+export function fromBasis(xw: Vec3, yw: Vec3, zw: Vec3): Quat {
+  // Rows of the rotation matrix are the world axes in sensor coordinates.
+  const m00 = xw.x, m01 = xw.y, m02 = xw.z
+  const m10 = yw.x, m11 = yw.y, m12 = yw.z
+  const m20 = zw.x, m21 = zw.y, m22 = zw.z
+  const tr = m00 + m11 + m22
+
+  if (tr > 0) {
+    const s = Math.sqrt(tr + 1) * 2
+    return normalize({ w: 0.25 * s, x: (m21 - m12) / s, y: (m02 - m20) / s, z: (m10 - m01) / s })
+  }
+  if (m00 > m11 && m00 > m22) {
+    const s = Math.sqrt(1 + m00 - m11 - m22) * 2
+    return normalize({ w: (m21 - m12) / s, x: 0.25 * s, y: (m01 + m10) / s, z: (m02 + m20) / s })
+  }
+  if (m11 > m22) {
+    const s = Math.sqrt(1 + m11 - m00 - m22) * 2
+    return normalize({ w: (m02 - m20) / s, x: (m01 + m10) / s, y: 0.25 * s, z: (m12 + m21) / s })
+  }
+  const s = Math.sqrt(1 + m22 - m00 - m11) * 2
+  return normalize({ w: (m10 - m01) / s, x: (m02 + m20) / s, y: (m12 + m21) / s, z: 0.25 * s })
+}
