@@ -115,6 +115,14 @@ export class SwingScene {
     )
     this.root.add(this.ball)
 
+    // These three get rewritten every frame. Three caches a bounding sphere the
+    // first time it culls and never recomputes it, so a line that starts life
+    // empty or tiny gets culled away for good once it grows. Nothing here is ever
+    // off screen anyway, so skip the test rather than recompute bounds per frame.
+    this.trail.frustumCulled = false
+    this.faceLine.frustumCulled = false
+    this.targetLine.frustumCulled = false
+
     this.resizeObserver = new ResizeObserver(() => this.resize())
     this.resizeObserver.observe(container)
     this.resize()

@@ -35,13 +35,21 @@ export function StatsPanel({ analysis }: { analysis: SwingAnalysis }) {
           value={sided(stats.faceToPathDeg, 'closed', 'open')}
           note="what curves it"
         />
-        <Stat label="Curve" value={sided(yards(flight.offlineM), 'left', 'right', 0)} />
+        <Stat label="Curve" value={sided(yards(flight.offlineM), 'left', 'right', 0, ' yd')} />
       </div>
 
       <div className="stat-row">
-        <Stat label="Face" value={sided(stats.faceAngleDeg)} />
-        <Stat label="Path" value={sided(stats.pathAngleDeg, 'out to in', 'in to out')} />
-        <Stat label="Attack" value={`${fixed(stats.attackAngleDeg)}${DEGREE}`} />
+        <Stat
+          label="Face"
+          value={`${fixed(stats.faceAngleDeg)}${DEGREE}`}
+          note={stats.faceAngleDeg > 0 ? 'open' : 'closed'}
+        />
+        <Stat
+          label="Path"
+          value={`${fixed(stats.pathAngleDeg)}${DEGREE}`}
+          note={stats.pathAngleDeg > 0 ? 'in to out' : 'out to in'}
+        />
+        <Stat label="Attack" value={`${fixed(stats.attackAngleDeg)}${DEGREE}`} note="down is minus" />
       </div>
 
       <div className="stat-row">

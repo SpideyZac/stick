@@ -10,17 +10,27 @@ export const mph = (mps: number): number => mps * MPH_PER_MPS
 export const yards = (meters: number): number => meters * YARDS_PER_METER
 export const feet = (meters: number): number => meters * FEET_PER_METER
 
+export const DEGREE = '\u00b0'
+
 export const fixed = (value: number, places = 1): string =>
   Number.isFinite(value) ? value.toFixed(places) : '-'
 
-/** Signed angle with an explicit direction word, which reads better than a minus. */
-export function sided(deg: number, left = 'left', right = 'right', places = 1): string {
-  if (!Number.isFinite(deg)) return '-'
-  if (Math.abs(deg) < 0.05) return `0${DEGREE}`
-  return `${Math.abs(deg).toFixed(places)}${DEGREE} ${deg > 0 ? right : left}`
+/**
+ * Signed value with a direction word, which reads better than a minus sign.
+ * The unit has to be passed in, since these are not all angles.
+ */
+export function sided(
+  value: number,
+  left = 'left',
+  right = 'right',
+  places = 1,
+  unit = DEGREE,
+): string {
+  if (!Number.isFinite(value)) return '-'
+  const magnitude = Math.abs(value).toFixed(places)
+  if (Math.abs(value) < 0.5 * 10 ** -places) return `0${unit}`
+  return `${magnitude}${unit} ${value > 0 ? right : left}`
 }
-
-export const DEGREE = '\u00b0'
 
 /** Tempo reads as a ratio against one, the way golfers talk about it. */
 export const tempo = (ratio: number): string =>

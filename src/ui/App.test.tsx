@@ -98,7 +98,9 @@ describe('app flow', () => {
     click('Record')
     await playThrough()
     expect(screen.getByText('Slice')).toBeTruthy()
-    expect(screen.getByText(/open$/)).toBeTruthy()
+    // An open face to path is what makes it a slice, so check that card and not
+    // just the word, which also shows up under the face angle.
+    expect(screen.getByText((text) => /^\d+(\.\d+)?° open$/.test(text))).toBeTruthy()
   })
 
   it('survives a waggle and still reports a swing', async () => {
