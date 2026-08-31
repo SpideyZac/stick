@@ -1,4 +1,0 @@
-{
-    "C_Cpp.default.compileCommands": "hardware/compile_commands.json",
-    "C_Cpp.default.compilerPath": "${env:USERPROFILE}/.platformio/packages/toolchain-xtensa-esp32s3/bin/xtensa-esp32s3-elf-gcc.exe"
-}
