@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useMemo, useState } from "react
 import type { ReactNode } from "react";
 import type { Club } from "../data/clubs";
 import type { Handedness } from "../swing/frames";
+import type { Mount } from "../swing/mount";
 import { appendSwing, loadProfile, resolveClub as resolveClubAgainst, saveProfile } from "./store";
 import type { ClubOverride, Profile, SwingRecord } from "./types";
 
@@ -9,6 +10,7 @@ interface ProfileApi {
     profile: Profile;
     setHand: (hand: Handedness) => void;
     setClubOverride: (clubId: string, patch: ClubOverride) => void;
+    setMount: (mount: Mount | null) => void;
     resetClubOverride: (clubId: string) => void;
     addSwing: (record: SwingRecord) => void;
     clearHistory: () => void;
@@ -27,6 +29,11 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
 
     const setHand = useCallback(
         (hand: Handedness) => update({ ...profile, hand }),
+        [profile, update],
+    );
+
+    const setMount = useCallback(
+        (mount: Mount | null) => update({ ...profile, mount }),
         [profile, update],
     );
 
@@ -71,13 +78,23 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
         () => ({
             profile,
             setHand,
+            setMount,
             setClubOverride,
             resetClubOverride,
             addSwing,
             clearHistory,
             resolveClub,
         }),
-        [profile, setHand, setClubOverride, resetClubOverride, addSwing, clearHistory, resolveClub],
+        [
+            profile,
+            setHand,
+            setMount,
+            setClubOverride,
+            resetClubOverride,
+            addSwing,
+            clearHistory,
+            resolveClub,
+        ],
     );
 
     return <ProfileCtx.Provider value={api}>{children}</ProfileCtx.Provider>;

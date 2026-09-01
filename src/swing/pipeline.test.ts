@@ -20,7 +20,7 @@ function capture(id: SwingId): SwingCapture {
     return out;
 }
 
-const analyze = (id: SwingId) => analyzeSwing(capture(id), CLUB, "right");
+const analyze = (id: SwingId) => analyzeSwing(capture(id), CLUB, "right", null);
 
 describe("round trip against ground truth", () => {
     // This is the test that proves the chain. The synthesizer knows exactly what
@@ -36,6 +36,12 @@ describe("round trip against ground truth", () => {
             // maths. A few milli-g of accelerometer bias at address is indistinguishable
             // from a fraction of a degree of tilt, and that tilt carries into every
             // angle measured against the address frame.
+            //
+            // Contact is placed from the reconstructed swing now rather than from an
+            // acceleration threshold (src/swing/impact.ts), and it still lands on the
+            // right sample. That is not a given: the club turns about a degree per
+            // sample here, so a single sample of slippage would show up in every
+            // angle below.
             const within = (got: number, want: number, what: string) =>
                 expect(Math.abs(got - want), what).toBeLessThan(1);
 
@@ -159,15 +165,15 @@ describe("ball flight", () => {
 
     it("flies further with a longer club", () => {
         const cap = capture("good");
-        const seven = analyzeSwing(cap, getClub("7i"), "right");
-        const four = analyzeSwing(cap, getClub("4i"), "right");
+        const seven = analyzeSwing(cap, getClub("7i"), "right", null);
+        const four = analyzeSwing(cap, getClub("4i"), "right", null);
         expect(four.flight.carryM).toBeGreaterThan(seven.flight.carryM);
     });
 
     it("spins more with a wedge than a long iron", () => {
         const cap = capture("good");
-        expect(analyzeSwing(cap, getClub("sw"), "right").flight.backspinRpm).toBeGreaterThan(
-            analyzeSwing(cap, getClub("4i"), "right").flight.backspinRpm,
+        expect(analyzeSwing(cap, getClub("sw"), "right", null).flight.backspinRpm).toBeGreaterThan(
+            analyzeSwing(cap, getClub("4i"), "right", null).flight.backspinRpm,
         );
     });
 });
@@ -205,7 +211,7 @@ describe("analysis output for the replay", () => {
 
 describe("the flushed 80 mph seven iron", () => {
     it("swings at about 80 mph and carries 150 to 160", () => {
-        const { stats, flight } = analyzeSwing(capture("flush"), CLUB, "right");
+        const { stats, flight } = analyzeSwing(capture("flush"), CLUB, "right", null);
         expect(stats.clubheadSpeedMps * MPH).toBeGreaterThan(77);
         expect(stats.clubheadSpeedMps * MPH).toBeLessThan(83);
         expect(flight.carryM * YARDS).toBeGreaterThan(148);
@@ -213,7 +219,7 @@ describe("the flushed 80 mph seven iron", () => {
     });
 
     it("is struck square, which is what makes it a flush one", () => {
-        const { stats, flight } = analyzeSwing(capture("flush"), CLUB, "right");
+        const { stats, flight } = analyzeSwing(capture("flush"), CLUB, "right", null);
         expect(Math.abs(stats.faceToPathDeg)).toBeLessThan(2);
         expect(Math.abs(flight.offlineM * YARDS)).toBeLessThan(12);
     });
@@ -229,14 +235,14 @@ describe("the flushed 80 mph seven iron", () => {
     });
 
     it("outruns the easier swing it is based on", () => {
-        const easy = analyzeSwing(capture("good"), CLUB, "right");
-        const flush = analyzeSwing(capture("flush"), CLUB, "right");
+        const easy = analyzeSwing(capture("good"), CLUB, "right", null);
+        const flush = analyzeSwing(capture("flush"), CLUB, "right", null);
         expect(flush.stats.clubheadSpeedMps).toBeGreaterThan(easy.stats.clubheadSpeedMps);
         expect(flush.flight.carryM).toBeGreaterThan(easy.flight.carryM);
     });
 
     it("runs a textbook three to one tempo", () => {
-        const { stats } = analyzeSwing(capture("flush"), CLUB, "right");
+        const { stats } = analyzeSwing(capture("flush"), CLUB, "right", null);
         expect(stats.tempoRatio).toBeGreaterThan(2.4);
         expect(stats.tempoRatio).toBeLessThan(3.6);
     });
@@ -244,7 +250,7 @@ describe("the flushed 80 mph seven iron", () => {
 
 describe("two segment model", () => {
     it("counts the hands, which the fixed grip model could not", () => {
-        const a = analyzeSwing(capture("flush"), CLUB, "right");
+        const a = analyzeSwing(capture("flush"), CLUB, "right", null);
         const i = a.phases.impactIndex;
         // Rotation about the hands alone leaves out roughly a fifth of the speed.
         const rotationOnly = Math.hypot(
@@ -257,7 +263,7 @@ describe("two segment model", () => {
     });
 
     it("moves the hands through the swing instead of pinning them", () => {
-        const a = analyzeSwing(capture("good"), CLUB, "right");
+        const a = analyzeSwing(capture("good"), CLUB, "right", null);
         const moved = a.gripPath.some(
             (p) =>
                 Math.hypot(p.x - a.gripPath[0].x, p.y - a.gripPath[0].y, p.z - a.gripPath[0].z) >
@@ -267,7 +273,7 @@ describe("two segment model", () => {
     });
 
     it("starts the hands at the origin, where the grip sat at address", () => {
-        const a = analyzeSwing(capture("good"), CLUB, "right");
+        const a = analyzeSwing(capture("good"), CLUB, "right", null);
         expect(Math.hypot(a.gripPath[0].x, a.gripPath[0].y, a.gripPath[0].z)).toBeLessThan(1e-6);
     });
 });
@@ -287,7 +293,7 @@ describe("left-handed golfers", () => {
         const d = new SwingDetector((c) => (out = c));
         for (let i = 0; i < samples.length; i += 8) d.push(samples.slice(i, i + 8));
         if (!out) throw new Error("no capture");
-        return analyzeSwing(out, CLUB, "left");
+        return analyzeSwing(out, CLUB, "left", null);
     }
 
     it("reads a mirrored square swing as square, not tilted 180 degrees off", () => {
@@ -320,7 +326,7 @@ describe("left-handed golfers", () => {
         const d = new SwingDetector((c) => (out = c));
         for (let i = 0; i < samples.length; i += 8) d.push(samples.slice(i, i + 8));
         if (!out) throw new Error("no capture");
-        const a = analyzeSwing(out, CLUB, "left");
+        const a = analyzeSwing(out, CLUB, "left", null);
 
         // Ball misses to the golfer's dominant side, same as the righty slice
         // test above, which for a lefty is physically the opposite side of target.

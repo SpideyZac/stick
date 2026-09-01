@@ -22,9 +22,14 @@ const BASE: SwingParams = {
     backswingSec: 0.78,
     pauseSec: 0.05,
     downswingSec: 0.3,
-    followSec: 0.5,
+    // Long enough for the club to come to rest, which is what closes a capture now
+    // that nothing is watching for a contact spike to end it.
+    followSec: 0.9,
     sweepDeg: 190,
     waggles: [],
+    // Well under the eight g the old impact threshold demanded. Detection has to
+    // come off the geometry of the swing, not off this number.
+    impactShockG: 6,
     verticalDriftM: 0,
     lateralDriftM: 0,
     // A real BMI270 turns up with a degree or two of bias on each axis. Left in

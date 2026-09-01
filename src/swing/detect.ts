@@ -1,5 +1,5 @@
 import type { ImuSample } from "../imu/types";
-import { DEG, GRAVITY } from "./frames";
+import { DEG } from "./frames";
 
 export const DETECT = {
     /** Below this the club counts as still. */
@@ -12,16 +12,19 @@ export const DETECT = {
     holdSec: 0.12,
     /** Fraction of the hold that must rotate the same way a takeaway does. */
     directionAgreement: 0.8,
-    /** Contact. Well clear of the six or seven g the grip sees mid swing. */
-    impactG: 8,
-    /** No impact this long after takeaway means it was not a swing. */
-    captureTimeoutSec: 7,
-    /** Motion this quiet for this long, with no impact, also means it was not one. */
-    abortStillSec: 0.3,
     /** A swing that never gets near this was something else. */
     minPeakDps: 400,
-    /** How much follow through to keep after contact. */
+    /**
+     * Once the club has been through the ball it slows down. Below this, held for
+     * followSec, the swing is over and the capture closes. Everything after the
+     * strike is follow through, so this doubles as how much of it gets kept.
+     */
+    releaseDps: 150,
     followSec: 0.3,
+    /** No downswing this long after takeaway means it was not a swing. */
+    captureTimeoutSec: 7,
+    /** Motion this quiet for this long, before any downswing, also means it was not one. */
+    abortStillSec: 0.3,
     /** Gap left between the calibration window and t=0, so the takeaway ramp
      * cannot contaminate the bias estimate. */
     stillGuardSec: 0.06,
@@ -36,15 +39,12 @@ export interface SwingCapture {
     samples: ImuSample[];
     /** The still stretch just before takeaway, used for calibration. */
     still: ImuSample[];
-    /** Index of contact within `samples`. */
-    impactIndex: number;
 }
 
 const magnitude = (s: ImuSample) => Math.hypot(s.gx, s.gy, s.gz);
-const accelMagnitude = (s: ImuSample) => Math.hypot(s.ax, s.ay, s.az);
 
 /**
- * Finds the real start of a swing in a live stream.
+ * Finds the real start and end of a swing in a live stream.
  *
  * Recording starts when the golfer taps the button, which is well before they
  * have settled over the ball, so the tap tells us nothing. What we do instead is
@@ -54,9 +54,15 @@ const accelMagnitude = (s: ImuSample) => Math.hypot(s.ax, s.ay, s.az);
  * Confirmation is deliberately split in two. A cheap check at 120ms commits to
  * capturing, which throws out most waggles straight away and keeps t=0 accurate.
  * A second check at the end throws out anything that got that far but never
- * turned into contact, which is what catches a waggle big and slow enough to
+ * turned into a downswing, which is what catches a waggle big and slow enough to
  * survive the first pass. Buffering is cheap, so a provisional capture costs
  * nothing if it turns out to be wrong.
+ *
+ * What this deliberately does not do is find contact. It used to, by watching
+ * for an acceleration spike, and that was never a question the grip could answer
+ * -- see src/swing/impact.ts. All this has to know is that a downswing happened
+ * and has finished, which is plain in the gyro: a fast rotation opposing the
+ * takeaway, then a decay. Contact is placed later, from the reconstructed swing.
  */
 export class SwingDetector {
     private buf: ImuSample[] = [];
@@ -71,9 +77,10 @@ export class SwingDetector {
     private candidateDir = { x: 0, y: 0, z: 0 };
 
     private startAbs = -1;
-    private impactAbs = -1;
     private peakDps = 0;
     private quietRun = 0;
+    private releaseRun = 0;
+    private downswingSeen = false;
 
     constructor(
         private onCapture: (capture: SwingCapture) => void,
@@ -91,9 +98,10 @@ export class SwingDetector {
         this.stillRun = 0;
         this.candidateAbs = -1;
         this.startAbs = -1;
-        this.impactAbs = -1;
         this.peakDps = 0;
         this.quietRun = 0;
+        this.releaseRun = 0;
+        this.downswingSeen = false;
         this.setState("settling");
     }
 
@@ -149,9 +157,10 @@ export class SwingDetector {
             // Walk back to the last moment of genuine stillness. That is t=0, not the
             // threshold crossing and definitely not the record tap.
             this.startAbs = this.lastStillBefore(this.candidateAbs);
-            this.impactAbs = -1;
             this.peakDps = 0;
             this.quietRun = 0;
+            this.releaseRun = 0;
+            this.downswingSeen = false;
             this.setState("capturing");
         } else {
             this.setState("settling");
@@ -176,26 +185,37 @@ export class SwingDetector {
     private evaluateCapture(abs: number, s: ImuSample, dps: number): void {
         this.peakDps = Math.max(this.peakDps, dps);
 
-        if (this.impactAbs < 0) {
-            const g = accelMagnitude(s) / GRAVITY;
-            // Guard the window so the takeaway itself can never register as contact.
-            if (g > DETECT.impactG && abs - this.startAbs > this.samplesFor(0.15)) {
-                this.impactAbs = abs;
-            }
+        // A hard rotation opposing the takeaway is the downswing and nothing else.
+        // The backswing runs the other way, so it can never set this however fast
+        // it gets, which a plain speed threshold could not promise.
+        if (!this.downswingSeen && dps >= DETECT.minPeakDps && this.opposesTakeaway(s)) {
+            this.downswingSeen = true;
         }
 
-        if (this.impactAbs >= 0) {
-            if (abs - this.impactAbs >= this.samplesFor(DETECT.followSec)) this.emit(abs);
+        const tooLong = abs - this.startAbs > this.samplesFor(DETECT.captureTimeoutSec);
+
+        if (this.downswingSeen) {
+            this.releaseRun = dps < DETECT.releaseDps ? this.releaseRun + 1 : 0;
+            // Close on the club settling, or on the timeout if it never does. A
+            // golfer who swings and walks straight off never goes quiet, and without
+            // the second condition the capture would run forever and take the
+            // history buffer with it.
+            if (this.releaseRun >= this.samplesFor(DETECT.followSec) || tooLong) this.emit(abs);
             return;
         }
 
-        // No contact yet. Give up if the club goes quiet again or if it drags on.
+        // No downswing yet. Give up if the club goes quiet again or if it drags on.
         this.quietRun = dps < DETECT.stillDps ? this.quietRun + 1 : 0;
         const wentQuiet = this.quietRun >= this.samplesFor(DETECT.abortStillSec);
-        const tooLong = abs - this.startAbs > this.samplesFor(DETECT.captureTimeoutSec);
         if (wentQuiet || tooLong) this.setState("settling");
     }
 
+    private opposesTakeaway(s: ImuSample): boolean {
+        const d = this.candidateDir;
+        return s.gx * d.x + s.gy * d.y + s.gz * d.z < 0;
+    }
+
+    /** Close out a capture, provided the swing was ever quick enough to be one. */
     private emit(endAbs: number): void {
         if (this.peakDps < DETECT.minPeakDps) {
             this.setState("settling");
@@ -205,12 +225,11 @@ export class SwingDetector {
         const stillEnd = this.startAbs + 1 - this.samplesFor(DETECT.stillGuardSec);
         const stillStart = Math.max(this.base, stillEnd - this.samplesFor(DETECT.stillWindowSec));
         // Not enough clean history to calibrate against, so this one is unusable.
-        if (stillEnd - stillStart < 8) return;
-        const capture: SwingCapture = {
-            samples,
-            still: this.slice(stillStart, stillEnd),
-            impactIndex: this.impactAbs - this.startAbs,
-        };
+        if (stillEnd - stillStart < 8) {
+            this.setState("settling");
+            return;
+        }
+        const capture: SwingCapture = { samples, still: this.slice(stillStart, stillEnd) };
         this.setState("settling");
         this.onCapture(capture);
     }

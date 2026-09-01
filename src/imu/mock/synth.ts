@@ -69,6 +69,15 @@ export interface SwingParams {
      * heel or toe strike. Same ramp as verticalDriftM.
      */
     lateralDriftM: number;
+    /**
+     * Peak of the contact shock that reaches the sensor, in g. This is not the
+     * clubhead's own deceleration: the mount sits on the shaft below the grip, so
+     * what arrives is whatever a meter of flexing shaft passes on, which is much
+     * smaller and varies with the club, the strike, and how tight the strap is.
+     * It stays a parameter, set well below what an acceleration threshold would
+     * have needed, because nothing downstream is allowed to depend on its size.
+     */
+    impactShockG: number;
     gyroBiasDps: Vec3;
     gyroNoiseDps: number;
     accelNoiseG: number;
@@ -115,7 +124,6 @@ export interface SynthResult {
 const hubFor = (hand: Handedness): Vec3 => v3(0, 0.55, hand === "right" ? -0.35 : 0.35);
 /** Hands turn a good deal less than the shaft, the rest is wrist hinge. */
 const HAND_FRACTION = 0.3;
-const IMPACT_PEAK_G = 16;
 
 /** Address pose with the club grounded and the face square to the target. */
 export function addressPose(lieDeg: number, hand: Handedness): Quat {
@@ -228,7 +236,7 @@ export function synthesizeSwing(p: SwingParams): SynthResult {
         const gS = rotate(conj(q[i]), omegaW[i]);
 
         const spike = impactSpike(i, impactIndex);
-        if (spike > 0) aS = addScaled(aS, faceNormalS(p.hand), -spike * IMPACT_PEAK_G * GRAVITY);
+        if (spike > 0) aS = addScaled(aS, faceNormalS(p.hand), -spike * p.impactShockG * GRAVITY);
 
         samples[i] = {
             t: i * dt,

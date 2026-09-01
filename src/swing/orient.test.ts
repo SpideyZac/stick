@@ -90,7 +90,10 @@ describe("orientation integration", () => {
         const track = integrateOrientation(cap.samples, cal);
         const truth = getSwing(id).truth;
         const offset = Math.round(cap.samples[0].t * 400);
-        return { cap, cal, track, truth, offset };
+        // Truth index rather than the pipeline's estimate: what is under test here is
+        // how closely the integrated orientation follows reality, so the instant it
+        // is checked at has to come from the synthesizer.
+        return { cap, cal, track, truth, offset, impactIndex: truth.impactIndex - offset };
     }
 
     it("tracks the true orientation through the whole swing", () => {
@@ -105,9 +108,9 @@ describe("orientation integration", () => {
 
     it("is still accurate at the moment that matters, impact", () => {
         for (const id of ["good", "slice", "hook"] as const) {
-            const { cap, track, truth, offset } = trackAgainstTruth(id);
+            const { track, truth, offset, impactIndex } = trackAgainstTruth(id);
             const err = toDeg(
-                angleBetweenQuats(track.q[cap.impactIndex], truth.q[offset + cap.impactIndex]),
+                angleBetweenQuats(track.q[impactIndex], truth.q[offset + impactIndex]),
             );
             expect(err, id).toBeLessThan(3);
         }
@@ -129,15 +132,12 @@ describe("orientation integration", () => {
     });
 
     it("applies gravity corrections at address and again near the top", () => {
-        const { track, cap } = trackAgainstTruth("good");
+        const { track, cap, impactIndex } = trackAgainstTruth("good");
         expect(track.zuptCount).toBeGreaterThan(10);
 
         // Corrections have to stop once the club is really moving.
         const cal = calibrate(cap.still, CLUB, "right");
-        const mid = integrateOrientation(
-            cap.samples.slice(cap.impactIndex - 40, cap.impactIndex),
-            cal,
-        );
+        const mid = integrateOrientation(cap.samples.slice(impactIndex - 40, impactIndex), cal);
         expect(mid.zuptCount).toBe(0);
     });
 
@@ -219,10 +219,12 @@ describe("forward kinematics", () => {
         const cap = capture("good");
         const cal = calibrate(cap.still, CLUB, "right");
         const track = integrateOrientation(cap.samples, cal);
+        const truth = getSwing("good").truth;
+        const impactIndex = truth.impactIndex - Math.round(cap.samples[0].t * 400);
         const heights = track.q.map((q) => clubheadOffset(q, 0.89).y);
         // It goes up and over in the backswing, and comes back down to the ball.
         expect(Math.max(...heights)).toBeGreaterThan(0.5);
-        expect(heights[cap.impactIndex]).toBeCloseTo(heights[0], 1);
+        expect(heights[impactIndex]).toBeCloseTo(heights[0], 1);
     });
 
     it("keeps the clubhead on a sphere about the grip", () => {

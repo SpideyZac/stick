@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { getClub } from "../data/clubs";
 import { SWING_IDS, SWING_LABELS, type SwingId } from "../imu/mock/swings";
 import type { BleDevice } from "./useBleDevice";
@@ -6,6 +5,8 @@ import { STATUS_TEXT, type RecorderStatus } from "./useSwingRecorder";
 
 interface Props {
     clubId: string;
+    /** False until a swing has taught the app how the Stick is strapped on. */
+    hasMount: boolean;
     status: RecorderStatus;
     error: string | null;
     mockSwing: SwingId;
@@ -17,8 +18,6 @@ interface Props {
 }
 
 function DeviceRow({ device }: { device: BleDevice }) {
-    const [key, setKey] = useState("");
-
     if (device.status === "disconnected" || device.status === "error") {
         return (
             <div className="dev-source">
@@ -33,39 +32,26 @@ function DeviceRow({ device }: { device: BleDevice }) {
     if (device.status === "connecting") {
         return (
             <div className="dev-source">
-                <span>Choose your Stick in the browser prompt…</span>
+                <span>
+                    {device.retry > 0
+                        ? `Connecting… (attempt ${device.retry + 1})`
+                        : "Choose your Stick in the browser prompt…"}
+                </span>
             </div>
         );
     }
 
-    if (device.status === "needs-key" || device.status === "authenticating") {
+    // Dropped links are routine on this stack and get rebuilt without the golfer
+    // touching anything, so this says what is happening rather than offering a
+    // button that would only do the same thing again.
+    if (device.status === "reconnecting") {
         return (
-            <form
-                className="dev-key"
-                onSubmit={(e) => {
-                    e.preventDefault();
-                    device.submitKey(key);
-                }}
-            >
-                <input
-                    type="text"
-                    inputMode="text"
-                    autoCapitalize="off"
-                    autoCorrect="off"
-                    placeholder="Device key"
-                    value={key}
-                    onChange={(e) => setKey(e.target.value)}
-                    disabled={device.status === "authenticating"}
-                />
-                <button
-                    type="submit"
-                    className="link"
-                    disabled={device.status === "authenticating"}
-                >
-                    {device.status === "authenticating" ? "Checking…" : "Unlock"}
+            <div className="dev-source">
+                <span>Lost the Stick, reconnecting… (attempt {device.retry + 1})</span>
+                <button type="button" className="link" onClick={device.disconnect}>
+                    Give up
                 </button>
-                {device.error ? <p className="warning">{device.error}</p> : null}
-            </form>
+            </div>
         );
     }
 
@@ -81,6 +67,7 @@ function DeviceRow({ device }: { device: BleDevice }) {
 
 export function RecordScreen({
     clubId,
+    hasMount,
     status,
     error,
     mockSwing,
@@ -108,11 +95,22 @@ export function RecordScreen({
                     {STATUS_TEXT[status]}
                 </div>
                 {error ? <p className="warning">{error}</p> : null}
-                <p className="muted center">
-                    {connected
-                        ? "Tap record, or press the button on the Stick."
-                        : "Tap record and take your time getting set up."}
-                </p>
+                {hasMount ? (
+                    <p className="muted center">
+                        {connected
+                            ? "Tap record, or press the button on the Stick."
+                            : "Tap record and take your time getting set up."}
+                    </p>
+                ) : (
+                    // Nothing is known yet about which way up the Stick went on the
+                    // shaft, and this swing is what works it out. Worth saying so: it
+                    // is the one swing where grounding the club properly matters to
+                    // every swing afterwards, not just to this one.
+                    <p className="muted center">
+                        First swing sets up the Stick. Ground the club behind the ball, settle, then
+                        make one normal swing.
+                    </p>
+                )}
             </div>
 
             <footer className="screen-foot">

@@ -25,7 +25,11 @@ function track(id: SwingId) {
     const orientation = integrateOrientation(cap.samples, cal);
     const grip = trackGrip(cap.samples, orientation.q, cap.still, "right");
     const truth = getSwing(id).truth;
-    return { cap, grip, truth, offset: Math.round(cap.samples[0].t * 400) };
+    const offset = Math.round(cap.samples[0].t * 400);
+    // Truth index, not the pipeline's estimate: these tests are about how well the
+    // grip track matches reality, so the reference instant has to come from the
+    // synthesizer rather than from anything under test.
+    return { cap, grip, truth, offset, impactIndex: truth.impactIndex - offset };
 }
 
 describe("grip velocity from the accelerometer", () => {
@@ -36,9 +40,9 @@ describe("grip velocity from the accelerometer", () => {
 
     it("recovers hand speed at impact", () => {
         for (const id of ["good", "slice", "hook"] as const) {
-            const { grip, truth, cap, offset } = track(id);
-            const got = grip.velocity[cap.impactIndex];
-            const want = truth.gripVel[offset + cap.impactIndex];
+            const { grip, truth, offset, impactIndex } = track(id);
+            const got = grip.velocity[impactIndex];
+            const want = truth.gripVel[offset + impactIndex];
             // One integration from a known zero start, over about a second.
             expect(len(sub(got, want)), `${id} vector`).toBeLessThan(0.8);
             expect(len(got), `${id} speed`).toBeCloseTo(len(want), 0);
@@ -46,17 +50,17 @@ describe("grip velocity from the accelerometer", () => {
     });
 
     it("finds hands moving at a realistic speed through the ball", () => {
-        const { grip, cap } = track("good");
-        const mps = len(grip.velocity[cap.impactIndex]);
+        const { grip, impactIndex } = track("good");
+        const mps = len(grip.velocity[impactIndex]);
         // Amateur hands run about five to eight metres per second at contact.
         expect(mps).toBeGreaterThan(4);
         expect(mps).toBeLessThan(9);
     });
 
     it("tracks the whole hand path, not just the moment of impact", () => {
-        const { grip, truth, cap, offset } = track("good");
+        const { grip, truth, offset, impactIndex } = track("good");
         let worst = 0;
-        for (let i = 0; i < cap.impactIndex; i++) {
+        for (let i = 0; i < impactIndex; i++) {
             worst = Math.max(worst, len(sub(grip.velocity[i], truth.gripVel[offset + i])));
         }
         expect(worst).toBeLessThan(1.2);
@@ -71,16 +75,16 @@ describe("grip velocity from the accelerometer", () => {
     });
 
     it("puts the hands back near address height at impact", () => {
-        const { grip, cap } = track("good");
+        const { grip, impactIndex } = track("good");
         const start = grip.position[0];
-        const atImpact = grip.position[cap.impactIndex];
+        const atImpact = grip.position[impactIndex];
         // Hands travel forward through the ball but do not climb much.
         expect(Math.abs(atImpact.y - start.y)).toBeLessThan(0.25);
     });
 
     it("moves the hands a sensible distance over the swing", () => {
-        const { grip, cap } = track("good");
-        const travel = len(sub(grip.position[cap.impactIndex], grip.position[0]));
+        const { grip, impactIndex } = track("good");
+        const travel = len(sub(grip.position[impactIndex], grip.position[0]));
         expect(travel).toBeGreaterThan(0.15);
         expect(travel).toBeLessThan(1.4);
     });

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { getClub } from "../../data/clubs";
+import { GRAVITY } from "../../swing/frames";
 import { SwingDetector, type SwingCapture } from "../../swing/detect";
 import { analyzeSwing } from "../../swing/pipeline";
 import { GYRO_RANGE_DPS, ACCEL_RANGE_G, type ImuSample } from "../types";
@@ -43,11 +44,33 @@ describe("synthesized swings", () => {
         expect(gyroMag(samples[i])).toBeLessThan(6);
     });
 
-    it("puts a hard accel spike at impact and nowhere else", () => {
+    it("puts a contact shock at impact that a threshold could not have found", () => {
         const { samples, truth } = getSwing("good");
-        expect(accelMag(samples[truth.impactIndex])).toBeGreaterThan(12);
-        const beforeImpact = samples.slice(0, truth.impactIndex - 2).map(accelMag);
-        expect(Math.max(...beforeImpact)).toBeLessThan(12);
+        const atImpact = accelMag(samples[truth.impactIndex]);
+        const swingPeak = Math.max(...samples.slice(0, truth.impactIndex - 2).map(accelMag));
+
+        // The shock is real but modest: this is a sensor strapped to the shaft below
+        // the grip, not one bolted to the clubhead. It does not clear the swing's own
+        // mid-downswing loading by anything like enough for a fixed number of g to
+        // separate the two, which is the whole reason contact is found geometrically
+        // now. See src/swing/impact.ts.
+        expect(atImpact).toBeGreaterThan(swingPeak);
+        expect(atImpact).toBeLessThan(swingPeak * 2);
+    });
+
+    it("makes contact stand out by contrast rather than by size", () => {
+        const { samples, truth } = getSwing("good");
+        const jerk = (i: number) =>
+            Math.hypot(
+                samples[i].ax - samples[i - 1].ax,
+                samples[i].ay - samples[i - 1].ay,
+                samples[i].az - samples[i - 1].az,
+            ) / GRAVITY;
+        const i = truth.impactIndex;
+        const quiet = Math.max(jerk(i - 30), jerk(i - 20), jerk(i - 10));
+        // Sample to sample, the swing itself is smooth and contact is not. That
+        // contrast survives on any club, which a g figure does not.
+        expect(jerk(i)).toBeGreaterThan(quiet * 8);
     });
 
     it("produces a plausible mid iron swing", () => {
@@ -128,20 +151,20 @@ describe("mis-hit presets", () => {
 
     for (const id of SWING_IDS) {
         it(`reads ${id} as ${expectedZone[id]}`, () => {
-            const a = analyzeSwing(capture(id), SEVEN_IRON, "right");
+            const a = analyzeSwing(capture(id), SEVEN_IRON, "right", null);
             expect(a.strike.zone).toBe(expectedZone[id]);
         });
     }
 
     it("carries noticeably shorter when badly mis-hit than a clean swing", () => {
-        const good = analyzeSwing(capture("good"), SEVEN_IRON, "right");
-        const topped = analyzeSwing(capture("topped"), SEVEN_IRON, "right");
+        const good = analyzeSwing(capture("good"), SEVEN_IRON, "right", null);
+        const topped = analyzeSwing(capture("topped"), SEVEN_IRON, "right", null);
         expect(topped.flight.carryM).toBeLessThan(good.flight.carryM * 0.6);
     });
 
     it("stays inside the fairway line for the clean presets", () => {
         for (const id of ["good", "flush", "slice", "hook", "waggle"] as const) {
-            const a = analyzeSwing(capture(id), SEVEN_IRON, "right");
+            const a = analyzeSwing(capture(id), SEVEN_IRON, "right", null);
             expect(a.strike.zone, id).toBe("center");
             expect(a.strike.offCenterM, id).toBe(0);
         }

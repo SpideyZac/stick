@@ -46,7 +46,8 @@ const FIELDS: FieldSpec[] = [
 ];
 
 export function CalibrateScreen({ onDone }: { onDone: () => void }) {
-    const { profile, setClubOverride, resetClubOverride, resolveClub } = useProfile();
+    const { profile, setClubOverride, resetClubOverride, resolveClub, setMount } = useProfile();
+    const mount = profile.mount;
 
     return (
         <div className="screen">
@@ -58,6 +59,27 @@ export function CalibrateScreen({ onDone }: { onDone: () => void }) {
             </header>
 
             <div className="scroll">
+                <section>
+                    <h2 className="group-label">Sensor mount</h2>
+                    <div className="calibrate-card">
+                        <p className="muted">
+                            {mount
+                                ? `Learned ${new Date(mount.ts).toLocaleDateString()} from a swing that put the shaft ${mount.lieAngleDeg.toFixed(0)} degrees off the ground at address.`
+                                : "Not set up yet. The next swing you record works it out."}
+                        </p>
+                        <p className="muted">
+                            Which way up the Stick sits on the shaft is read off a swing, so there
+                            is nothing here to enter. Relearn it whenever the strap moves, and do it
+                            on a swing that feels normal to you: the line you swing on is the line
+                            every path angle afterwards is measured against.
+                        </p>
+                        {mount ? (
+                            <button type="button" className="link" onClick={() => setMount(null)}>
+                                Forget it and relearn on the next swing
+                            </button>
+                        ) : null}
+                    </div>
+                </section>
                 <p className="muted">
                     These are estimates, not measured specs. Override any of them with numbers you
                     actually know for your clubs; leave the rest alone.

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { getSwing } from "../imu/mock/swings";
+import { SWING_PRESETS, getSwing } from "../imu/mock/swings";
+import { synthesizeSwing } from "../imu/mock/synth";
 import type { ImuSample } from "../imu/types";
 import { DETECT, type DetectState, SwingDetector, type SwingCapture } from "./detect";
 
@@ -58,14 +59,32 @@ describe("swing detection", () => {
         expect(t0).toBeGreaterThan(lastWaggleEnd);
     });
 
-    it("finds impact and keeps follow through after it", () => {
+    it("keeps recording past contact and through the follow through", () => {
         const { samples, truth } = getSwing("good");
         const [capture] = run(samples).captures;
-        const impactT = capture.samples[capture.impactIndex].t;
-        expect(impactT).toBeCloseTo(samples[truth.impactIndex].t, 2);
+        const impactT = samples[truth.impactIndex].t;
+        const end = capture.samples[capture.samples.length - 1].t;
 
-        const after = capture.samples[capture.samples.length - 1].t - impactT;
-        expect(after).toBeGreaterThanOrEqual(DETECT.followSec - 0.02);
+        // The detector never looks for contact -- it waits for the downswing to
+        // decay. That has to leave the analysis a real follow through to work with.
+        expect(end).toBeGreaterThan(impactT + DETECT.followSec);
+    });
+
+    it("closes the capture once the club has settled, not before", () => {
+        const { samples } = getSwing("good");
+        const [capture] = run(samples).captures;
+        const tail = capture.samples.slice(-capture.samples.length / 8);
+        const slowest = Math.min(
+            ...tail.map((s) => Math.hypot(s.gx, s.gy, s.gz) * (180 / Math.PI)),
+        );
+        expect(slowest).toBeLessThan(DETECT.releaseDps);
+    });
+
+    it("does not need a contact spike to end a capture", () => {
+        // The whole point of dropping the g threshold: a swing whose shock never
+        // reaches the grip at all still captures, start to finish.
+        const silent = synthesizeSwing({ ...SWING_PRESETS.good, impactShockG: 0 });
+        expect(run(silent.samples).captures).toHaveLength(1);
     });
 
     it("hands back a still window to calibrate against", () => {

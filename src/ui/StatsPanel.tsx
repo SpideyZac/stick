@@ -1,4 +1,6 @@
 import { shapeLabel } from "../flight/ballflight";
+import type { ImpactSource } from "../swing/impact";
+import type { Mount } from "../swing/mount";
 import type { StrikeZone } from "../swing/strike";
 import type { SwingAnalysis } from "../swing/pipeline";
 import { DEGREE, fixed, mph, sided, tempo, yards } from "./units";
@@ -23,15 +25,48 @@ function Stat({ label, value, note }: { label: string; value: string; note?: str
     );
 }
 
-export function StatsPanel({ analysis }: { analysis: SwingAnalysis }) {
-    const { stats, strike, flight, calibration, hand } = analysis;
+/**
+ * How contact was placed, in the golfer's terms. Worth showing: every angle on
+ * this panel is read at that instant, so knowing the club came back through the
+ * ball is knowing whether the rest of the numbers mean anything.
+ */
+const impactNote: Record<ImpactSource, string> = {
+    shock: "found the strike",
+    return: "found the ball, no strike felt",
+    proximity: "estimated from the arc",
+    "peak-rate": "estimated, low confidence",
+};
+
+export function StatsPanel({
+    analysis,
+    learnedMount,
+}: {
+    analysis: SwingAnalysis;
+    /** Set when this swing was also the one that taught the mount. */
+    learnedMount?: Mount | null;
+}) {
+    const { stats, strike, flight, calibration, impact, hand } = analysis;
     // "Open/closed" and "in to out/out to in" are named relative to the
     // golfer, so a left-handed swing reads the opposite sign of a righty's.
     const mirror = hand === "right" ? 1 : -1;
 
     return (
         <div className="stats">
+            {learnedMount ? (
+                <p className="muted">
+                    Stick set up from this swing: shaft {fixed(learnedMount.lieAngleDeg, 0)}
+                    {DEGREE} off the ground at address. Every swing from here reads against that.
+                    Redo it from Calibrate if the strap moves.
+                </p>
+            ) : null}
             {calibration.warning ? <p className="warning">{calibration.warning}</p> : null}
+            {impact.passedBall ? null : (
+                <p className="warning">
+                    The clubhead came no closer than {fixed(impact.approachM * 100, 0)} cm to where
+                    the ball was at address, so this reads like an air swing. Everything below is
+                    measured at the low point of the arc instead.
+                </p>
+            )}
 
             <div className="stat-row headline">
                 <Stat label="Tempo" value={tempo(stats.tempoRatio)} note="back : down" />
@@ -52,6 +87,11 @@ export function StatsPanel({ analysis }: { analysis: SwingAnalysis }) {
                             ? `${fixed(strike.offCenterM * 1000, 0)} mm off center`
                             : "no contact"
                     }
+                />
+                <Stat
+                    label="Contact at"
+                    value={`${fixed(impact.sec, 2)} s`}
+                    note={impactNote[impact.source]}
                 />
             </div>
 

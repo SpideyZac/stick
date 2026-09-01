@@ -20,23 +20,46 @@ let swingCounter = 0;
 const nextSwingId = (): string => `${Date.now()}-${++swingCounter}`;
 
 export function App() {
-    const { profile, setHand, resolveClub, addSwing } = useProfile();
+    const { profile, setHand, setMount, resolveClub, addSwing } = useProfile();
     const [screen, setScreen] = useState<Screen>("setup");
     const [clubId, setClubId] = useState(DEFAULT_CLUB_ID);
     const [mockSwing, setMockSwing] = useState<SwingId>("good");
 
     const device = useBleDevice();
-    const deviceConnected = device.status === "connected";
+    // A link being rebuilt is still the link. Falling back to the mock the moment
+    // one drops would swap a real swing for a canned one mid-recording, which is
+    // worse than the second of silence while it comes back.
+    const usingDevice = device.status === "connected" || device.status === "reconnecting";
 
     const createSource = useCallback((): ImuSource => {
-        if (deviceConnected) return device.source;
+        if (usingDevice) return device.source;
         return new MockImuSource({ swing: mockSwing, clubId, hand: profile.hand });
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [deviceConnected, mockSwing, clubId, profile.hand]);
+    }, [usingDevice, mockSwing, clubId, profile.hand]);
 
-    const recorder = useSwingRecorder(clubId, profile.hand, resolveClub, createSource);
+    const recorder = useSwingRecorder(
+        clubId,
+        profile.hand,
+        resolveClub,
+        createSource,
+        profile.mount,
+        setMount,
+    );
     const recorderRef = useRef(recorder);
     recorderRef.current = recorder;
+
+    // Recording started from here has to be mirrored on the device, or its own REC
+    // badge disagrees with the screen in the golfer's hand. Writes only: the device
+    // notifies on its button, not on ours, so these cannot echo back.
+    const startRecording = useCallback(() => {
+        recorderRef.current.start();
+        device.setRecording(true);
+    }, [device]);
+
+    const stopRecording = useCallback(() => {
+        recorderRef.current.stop();
+        device.setRecording(false);
+    }, [device]);
 
     // Lets the physical button on the device drive recording from any screen.
     useEffect(() => {
@@ -129,7 +152,10 @@ export function App() {
                     </header>
                     <div className="scroll">
                         <SwingView analysis={recorder.analysis} />
-                        <StatsPanel analysis={recorder.analysis} />
+                        <StatsPanel
+                            analysis={recorder.analysis}
+                            learnedMount={recorder.learnedMount}
+                        />
                     </div>
                     <footer className="screen-foot">
                         <button
@@ -138,7 +164,7 @@ export function App() {
                             onClick={() => {
                                 recorder.clear();
                                 setScreen("record");
-                                recorder.start();
+                                startRecording();
                             }}
                         >
                             Hit another
@@ -153,14 +179,15 @@ export function App() {
         <div className="app">
             <RecordScreen
                 clubId={clubId}
+                hasMount={profile.mount !== null}
                 status={recorder.status}
                 error={recorder.error}
                 mockSwing={mockSwing}
                 onMockSwing={setMockSwing}
-                onStart={recorder.start}
-                onStop={recorder.stop}
+                onStart={startRecording}
+                onStop={stopRecording}
                 onChangeClub={() => {
-                    recorder.stop();
+                    stopRecording();
                     setScreen("setup");
                 }}
                 device={device}
