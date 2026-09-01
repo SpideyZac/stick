@@ -1,7 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Club } from "../data/clubs";
-import { MockImuSource } from "../imu/mock/source";
-import type { SwingId } from "../imu/mock/swings";
 import type { ImuSource } from "../imu/types";
 import { SwingDetector, type DetectState } from "../swing/detect";
 import type { Handedness } from "../swing/frames";
@@ -27,8 +25,8 @@ export interface Recorder {
 export function useSwingRecorder(
     clubId: string,
     hand: Handedness,
-    mockSwing: SwingId,
     resolveClub: (clubId: string) => Club,
+    createSource: () => ImuSource,
 ): Recorder {
     const [status, setStatus] = useState<RecorderStatus>("idle");
     const [analysis, setAnalysis] = useState<SwingAnalysis | null>(null);
@@ -40,9 +38,11 @@ export function useSwingRecorder(
     const clubRef = useRef(clubId);
     const handRef = useRef(hand);
     const resolveClubRef = useRef(resolveClub);
+    const createSourceRef = useRef(createSource);
     clubRef.current = clubId;
     handRef.current = hand;
     resolveClubRef.current = resolveClub;
+    createSourceRef.current = createSource;
 
     const stop = useCallback(() => {
         unsubscribeRef.current?.();
@@ -75,16 +75,12 @@ export function useSwingRecorder(
             (next) => setStatus(next),
         );
 
-        const source = new MockImuSource({
-            swing: mockSwing,
-            clubId: clubRef.current,
-            hand: handRef.current,
-        });
+        const source = createSourceRef.current();
         sourceRef.current = source;
         unsubscribeRef.current = source.onSamples((batch) => detector.push(batch));
         setStatus("settling");
         void source.start();
-    }, [mockSwing, stop]);
+    }, [stop]);
 
     const clear = useCallback(() => {
         stop();

@@ -361,6 +361,29 @@ button {
     font: inherit;
 }
 
+.dev-key {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.dev-key input {
+    flex: 1;
+    min-height: 40px;
+    background: var(--panel);
+    color: var(--text);
+    border: 1px solid var(--line);
+    border-radius: 7px;
+    padding: 0 10px;
+    font: inherit;
+}
+
+.dev-key .warning {
+    flex-basis: 100%;
+    margin: 4px 0 0;
+}
+
 /* Replay */
 .swing-view {
     margin-bottom: 16px;

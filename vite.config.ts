@@ -3,7 +3,15 @@ import react from "@vitejs/plugin-react";
 
 export default defineConfig({
     plugins: [react()],
-    server: { host: true },
+    server: {
+        host: true,
+        port: 5174,
+    },
+    preview: {
+        host: true,
+        port: 5174,
+        allowedHosts: true,
+    },
     build: {
         rollupOptions: {
             // three barely changes between builds, so let it cache on its own.

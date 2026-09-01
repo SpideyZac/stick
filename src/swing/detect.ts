@@ -13,9 +13,9 @@ export const DETECT = {
     /** Fraction of the hold that must rotate the same way a takeaway does. */
     directionAgreement: 0.8,
     /** Contact. Well clear of the six or seven g the grip sees mid swing. */
-    impactG: 12,
+    impactG: 8,
     /** No impact this long after takeaway means it was not a swing. */
-    captureTimeoutSec: 4,
+    captureTimeoutSec: 7,
     /** Motion this quiet for this long, with no impact, also means it was not one. */
     abortStillSec: 0.3,
     /** A swing that never gets near this was something else. */

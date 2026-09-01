@@ -1,6 +1,8 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { DEFAULT_CLUB_ID, getClub } from "../data/clubs";
+import { MockImuSource } from "../imu/mock/source";
 import type { SwingId } from "../imu/mock/swings";
+import type { ImuSource } from "../imu/types";
 import { useProfile } from "../profile/ProfileContext";
 import type { SwingRecord } from "../profile/types";
 import { CalibrateScreen } from "./CalibrateScreen";
@@ -9,6 +11,7 @@ import { HistoryScreen } from "./HistoryScreen";
 import { RecordScreen } from "./RecordScreen";
 import { StatsPanel } from "./StatsPanel";
 import { SwingView } from "./SwingView";
+import { useBleDevice } from "./useBleDevice";
 import { useSwingRecorder } from "./useSwingRecorder";
 
 type Screen = "setup" | "record" | "results" | "calibrate" | "history";
@@ -22,7 +25,30 @@ export function App() {
     const [clubId, setClubId] = useState(DEFAULT_CLUB_ID);
     const [mockSwing, setMockSwing] = useState<SwingId>("good");
 
-    const recorder = useSwingRecorder(clubId, profile.hand, mockSwing, resolveClub);
+    const device = useBleDevice();
+    const deviceConnected = device.status === "connected";
+
+    const createSource = useCallback((): ImuSource => {
+        if (deviceConnected) return device.source;
+        return new MockImuSource({ swing: mockSwing, clubId, hand: profile.hand });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [deviceConnected, mockSwing, clubId, profile.hand]);
+
+    const recorder = useSwingRecorder(clubId, profile.hand, resolveClub, createSource);
+    const recorderRef = useRef(recorder);
+    recorderRef.current = recorder;
+
+    // Lets the physical button on the device drive recording from any screen.
+    useEffect(() => {
+        return device.onControl((recording) => {
+            if (recording) {
+                setScreen("record");
+                if (recorderRef.current.status === "idle") recorderRef.current.start();
+            } else if (recorderRef.current.status !== "idle") {
+                recorderRef.current.stop();
+            }
+        });
+    }, [device]);
 
     // A finished swing is the only thing that moves us to the results screen.
     useEffect(() => {
@@ -137,6 +163,7 @@ export function App() {
                     recorder.stop();
                     setScreen("setup");
                 }}
+                device={device}
             />
         </div>
     );
